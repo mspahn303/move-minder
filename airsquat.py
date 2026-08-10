@@ -17,7 +17,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 GITHUB_REPO = "mspahn303/airsquat"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -95,7 +95,7 @@ def flat_button(parent, text, command, bg, fg, font_size=11, bold=True, width=10
         parent, text=text, command=command, bg=bg, fg=fg,
         activebackground=bg, activeforeground=fg,
         disabledforeground=DISABLED_FG,
-        font=("Aptos", font_size, "bold" if bold else "normal"),
+        font=("Candara", font_size, "bold" if bold else "normal"),
         relief="flat", bd=0, width=width, padx=6, pady=8,
         cursor="hand2", state=state,
     )
@@ -211,7 +211,7 @@ class AirSquatApp:
         header = tk.Frame(parent, bg=CARD_BG)
         header.pack(fill="x")
         tk.Label(
-            header, text="AIRSQUAT", font=("Aptos", 11, "bold"),
+            header, text="AIRSQUAT", font=("Candara", 11, "bold"),
             bg=CARD_BG, fg=ACCENT,
         ).pack(side="left")
         self.gear_icon = tk.PhotoImage(file=resource_path("gear.png"))
@@ -221,19 +221,19 @@ class AirSquatApp:
         ).pack(side="right")
 
         self.clock_label = tk.Label(
-            parent, font=("Aptos", 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+            parent, font=("Candara", 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
         )
         self.clock_label.pack(pady=(4, 2))
 
         self.countdown_label = tk.Label(
-            parent, font=("Aptos", 12), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=("Candara", 12), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.countdown_label.pack(pady=(0, 14))
 
         interval_wrap = tk.Frame(parent, bg=CARD_BG)
         interval_wrap.pack(fill="x", pady=(0, 14))
         tk.Label(
-            interval_wrap, text="INTERVAL", font=("Aptos", 8, "bold"),
+            interval_wrap, text="INTERVAL", font=("Candara", 8, "bold"),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 4))
 
@@ -245,7 +245,7 @@ class AirSquatApp:
         self.interval_buttons = {}
         for minutes in INTERVAL_OPTIONS:
             btn = tk.Button(
-                interval_frame, text=f"{minutes}m", font=("Aptos", 9, "bold"),
+                interval_frame, text=f"{minutes}m", font=("Candara", 9, "bold"),
                 relief="flat", bd=0, width=5, padx=2, pady=6, cursor="hand2",
                 command=lambda m=minutes: self.select_interval(m),
             )
@@ -257,17 +257,17 @@ class AirSquatApp:
         stats_wrap.pack(fill="x", pady=(0, 10))
 
         self.hits_label = tk.Label(
-            stats_wrap, font=("Aptos", 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
+            stats_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
         )
         self.hits_label.pack(side="left")
 
         self.misses_label = tk.Label(
-            stats_wrap, font=("Aptos", 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
+            stats_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
         )
         self.misses_label.pack(side="left", padx=(14, 0))
 
         self.all_time_label = tk.Label(
-            parent, font=("Aptos", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.all_time_label.pack(anchor="w", pady=(0, 10))
 
@@ -276,7 +276,7 @@ class AirSquatApp:
             parent, text="I'm in a meeting", variable=self.meeting_var,
             command=self.on_meeting_checkbox, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Aptos", 9), cursor="hand2",
+            selectcolor=CARD_BG, font=("Candara", 9), cursor="hand2",
         ).pack(anchor="w", pady=(0, 14))
 
         btn_frame = tk.Frame(parent, bg=CARD_BG)
@@ -305,10 +305,10 @@ class AirSquatApp:
         tk.Button(
             header, text="← Back", command=self.show_main, bg=CARD_BG, fg=ACCENT,
             activebackground=CARD_BG, activeforeground=ACCENT_DARK, relief="flat", bd=0,
-            font=("Aptos", 10, "bold"), cursor="hand2",
+            font=("Candara", 10, "bold"), cursor="hand2",
         ).pack(side="left")
         tk.Label(
-            header, text="SETTINGS", font=("Aptos", 11, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+            header, text="SETTINGS", font=("Candara", 11, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
         ).pack(side="left", padx=(10, 0))
 
         self._section_label(parent, "PREFERENCES")
@@ -320,7 +320,7 @@ class AirSquatApp:
             parent, text="Always on top", variable=self.always_on_top_var,
             command=self.on_always_on_top_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Aptos", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
         ).pack(anchor="w")
 
         self.auto_detect_var = tk.BooleanVar(
@@ -330,7 +330,7 @@ class AirSquatApp:
             parent, text="Auto-detect Teams calls (beta)", variable=self.auto_detect_var,
             command=self.on_auto_detect_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Aptos", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
         ).pack(anchor="w", pady=(0, 14))
 
         self._section_label(parent, "LAST 7 DAYS")
@@ -338,13 +338,13 @@ class AirSquatApp:
         self.week_frame.pack(fill="x", pady=(0, 4))
 
         self.settings_all_time_label = tk.Label(
-            parent, font=("Aptos", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.settings_all_time_label.pack(anchor="w", pady=(0, 14))
 
         self._section_label(parent, "UPDATES")
         tk.Label(
-            parent, text=f"Version {APP_VERSION}", font=("Aptos", 9),
+            parent, text=f"Version {APP_VERSION}", font=("Candara", 9),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 6))
 
@@ -355,7 +355,7 @@ class AirSquatApp:
         self.check_updates_btn.pack(anchor="w")
 
         self.update_status_label = tk.Label(
-            parent, text="", font=("Aptos", 9), bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260,
+            parent, text="", font=("Candara", 9), bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260,
             justify="left",
         )
         self.update_status_label.pack(anchor="w", pady=(6, 0))
@@ -367,7 +367,7 @@ class AirSquatApp:
 
     def _section_label(self, parent, text):
         tk.Label(
-            parent, text=text, font=("Aptos", 8, "bold"), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, text=text, font=("Candara", 8, "bold"), bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 4))
 
     def show_settings(self):
@@ -391,15 +391,15 @@ class AirSquatApp:
             row = tk.Frame(self.week_frame, bg=CARD_BG)
             row.pack(fill="x", pady=1)
             tk.Label(
-                row, text=day.strftime("%a %m/%d"), font=("Aptos", 9),
+                row, text=day.strftime("%a %m/%d"), font=("Candara", 9),
                 bg=CARD_BG, fg=TEXT_PRIMARY, width=10, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=f"● {entry['hits']}", font=("Aptos", 9, "bold"),
+                row, text=f"● {entry['hits']}", font=("Candara", 9, "bold"),
                 bg=CARD_BG, fg=HIT_COLOR, width=6, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=f"● {entry['misses']}", font=("Aptos", 9, "bold"),
+                row, text=f"● {entry['misses']}", font=("Candara", 9, "bold"),
                 bg=CARD_BG, fg=MISS_COLOR, width=6, anchor="w",
             ).pack(side="left")
 
@@ -662,11 +662,11 @@ class AirSquatApp:
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
         tk.Label(
-            self.banner, text="10 AIR SQUATS!", font=("Aptos", 24, "bold"),
+            self.banner, text="10 AIR SQUATS!", font=("Candara", 24, "bold"),
             bg=MISS_COLOR, fg="#ffffff",
         ).pack(pady=(28, 8))
         tk.Label(
-            self.banner, text="Get up and knock them out.", font=("Aptos", 11),
+            self.banner, text="Get up and knock them out.", font=("Candara", 11),
             bg=MISS_COLOR, fg="#ffe4e4",
         ).pack(pady=(0, 22))
 
