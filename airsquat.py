@@ -1,13 +1,24 @@
 import json
 import os
+import subprocess
 import sys
+import threading
 import tkinter as tk
+import urllib.request
 from datetime import datetime, timedelta
 
 try:
     import winsound
 except ImportError:
     winsound = None
+
+try:
+    import winreg
+except ImportError:
+    winreg = None
+
+APP_VERSION = "1.1.0"
+GITHUB_REPO = "mspahn303/airsquat"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
 DEFAULT_INTERVAL = 60
@@ -16,8 +27,8 @@ BG = "#f4f5f7"
 CARD_BG = "#ffffff"
 TEXT_PRIMARY = "#1f2430"
 TEXT_SECONDARY = "#6b7280"
-ACCENT = "#4f46e5"
-ACCENT_DARK = "#4338ca"
+ACCENT = "#2563eb"
+ACCENT_DARK = "#1d4ed8"
 HIT_COLOR = "#16a34a"
 MISS_COLOR = "#dc2626"
 NEUTRAL_BTN_BG = "#e5e7eb"
@@ -51,17 +62,17 @@ def load_stats():
         try:
             with open(STATS_PATH, "r") as f:
                 data = json.load(f)
-                data.setdefault("daily", {})
-                data.setdefault("all_time", {"hits": 0, "misses": 0})
-                data.setdefault("settings", {"interval_minutes": DEFAULT_INTERVAL})
-                return data
         except (json.JSONDecodeError, OSError):
-            pass
-    return {
-        "daily": {},
-        "all_time": {"hits": 0, "misses": 0},
-        "settings": {"interval_minutes": DEFAULT_INTERVAL},
-    }
+            data = {}
+    else:
+        data = {}
+    data.setdefault("daily", {})
+    data.setdefault("all_time", {"hits": 0, "misses": 0})
+    settings = data.setdefault("settings", {})
+    settings.setdefault("interval_minutes", DEFAULT_INTERVAL)
+    settings.setdefault("always_on_top", True)
+    settings.setdefault("auto_detect_teams", False)
+    return data
 
 
 def save_stats(stats):
@@ -84,10 +95,76 @@ def flat_button(parent, text, command, bg, fg, font_size=11, bold=True, width=10
         parent, text=text, command=command, bg=bg, fg=fg,
         activebackground=bg, activeforeground=fg,
         disabledforeground=DISABLED_FG,
-        font=("Segoe UI", font_size, "bold" if bold else "normal"),
+        font=("Aptos", font_size, "bold" if bold else "normal"),
         relief="flat", bd=0, width=width, padx=6, pady=8,
         cursor="hand2", state=state,
     )
+
+
+def fetch_latest_release():
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+        headers={"User-Agent": "AirSquat-App"},
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    tag = data.get("tag_name", "").lstrip("vV")
+    download_url = None
+    for asset in data.get("assets", []):
+        if asset.get("name", "").lower() == "airsquat.exe":
+            download_url = asset.get("browser_download_url")
+            break
+    return tag, download_url
+
+
+def parse_version(v):
+    parts = []
+    for p in v.split("."):
+        digits = "".join(ch for ch in p if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+def is_newer(latest, current):
+    return parse_version(latest) > parse_version(current)
+
+
+def teams_mic_active():
+    if winreg is None:
+        return False
+    base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, base) as key:
+            return _scan_for_teams_mic(key, base, 0)
+    except OSError:
+        return False
+
+
+def _scan_for_teams_mic(key, path, depth):
+    if depth > 3:
+        return False
+    i = 0
+    while True:
+        try:
+            subname = winreg.EnumKey(key, i)
+        except OSError:
+            break
+        i += 1
+        full_path = f"{path}\\{subname}"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, full_path) as subkey:
+                if "teams" in subname.lower():
+                    try:
+                        stop_time, _ = winreg.QueryValueEx(subkey, "LastUsedTimeStop")
+                        if stop_time == 0:
+                            return True
+                    except OSError:
+                        pass
+                if _scan_for_teams_mic(subkey, full_path, depth + 1):
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 class AirSquatApp:
@@ -95,7 +172,6 @@ class AirSquatApp:
         self.root = root
         self.root.title("AirSquat")
         self.root.configure(bg=BG)
-        self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         try:
@@ -108,29 +184,56 @@ class AirSquatApp:
         self.next_fire = None
         self.banner = None
         self.active_interval = None
+        self.meeting_active = False
+        self.pending_update_url = None
 
-        card = tk.Frame(root, bg=CARD_BG, padx=24, pady=20)
-        card.pack(padx=14, pady=14)
+        self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
+        self.card = tk.Frame(root, bg=CARD_BG, padx=24, pady=20)
+        self.card.pack(padx=14, pady=14)
+
+        self.main_frame = tk.Frame(self.card, bg=CARD_BG)
+        self.settings_frame = tk.Frame(self.card, bg=CARD_BG)
+
+        self.build_main_view()
+        self.build_settings_view()
+
+        self.main_frame.pack()
+
+        self.update_stats_label()
+        self.tick()
+
+    # ---------- main view ----------
+
+    def build_main_view(self):
+        parent = self.main_frame
+
+        header = tk.Frame(parent, bg=CARD_BG)
+        header.pack(fill="x")
         tk.Label(
-            card, text="AIRSQUAT", font=("Segoe UI", 11, "bold"),
+            header, text="AIRSQUAT", font=("Aptos", 11, "bold"),
             bg=CARD_BG, fg=ACCENT,
-        ).pack(anchor="w")
+        ).pack(side="left")
+        self.gear_icon = tk.PhotoImage(file=resource_path("gear.png"))
+        tk.Button(
+            header, image=self.gear_icon, command=self.show_settings, bg=CARD_BG,
+            activebackground=CARD_BG, relief="flat", bd=0, cursor="hand2",
+        ).pack(side="right")
 
         self.clock_label = tk.Label(
-            card, font=("Segoe UI", 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+            parent, font=("Aptos", 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
         )
         self.clock_label.pack(pady=(4, 2))
 
         self.countdown_label = tk.Label(
-            card, font=("Segoe UI", 12), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=("Aptos", 12), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.countdown_label.pack(pady=(0, 14))
 
-        interval_wrap = tk.Frame(card, bg=CARD_BG)
+        interval_wrap = tk.Frame(parent, bg=CARD_BG)
         interval_wrap.pack(fill="x", pady=(0, 14))
         tk.Label(
-            interval_wrap, text="INTERVAL", font=("Segoe UI", 8, "bold"),
+            interval_wrap, text="INTERVAL", font=("Aptos", 8, "bold"),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 4))
 
@@ -142,7 +245,7 @@ class AirSquatApp:
         self.interval_buttons = {}
         for minutes in INTERVAL_OPTIONS:
             btn = tk.Button(
-                interval_frame, text=f"{minutes}m", font=("Segoe UI", 9, "bold"),
+                interval_frame, text=f"{minutes}m", font=("Aptos", 9, "bold"),
                 relief="flat", bd=0, width=5, padx=2, pady=6, cursor="hand2",
                 command=lambda m=minutes: self.select_interval(m),
             )
@@ -150,25 +253,33 @@ class AirSquatApp:
             self.interval_buttons[minutes] = btn
         self.refresh_interval_buttons()
 
-        stats_wrap = tk.Frame(card, bg=CARD_BG)
-        stats_wrap.pack(fill="x", pady=(0, 16))
+        stats_wrap = tk.Frame(parent, bg=CARD_BG)
+        stats_wrap.pack(fill="x", pady=(0, 10))
 
         self.hits_label = tk.Label(
-            stats_wrap, font=("Segoe UI", 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
+            stats_wrap, font=("Aptos", 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
         )
         self.hits_label.pack(side="left")
 
         self.misses_label = tk.Label(
-            stats_wrap, font=("Segoe UI", 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
+            stats_wrap, font=("Aptos", 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
         )
         self.misses_label.pack(side="left", padx=(14, 0))
 
         self.all_time_label = tk.Label(
-            card, font=("Segoe UI", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=("Aptos", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
-        self.all_time_label.pack(anchor="w", pady=(0, 14))
+        self.all_time_label.pack(anchor="w", pady=(0, 10))
 
-        btn_frame = tk.Frame(card, bg=CARD_BG)
+        self.meeting_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            parent, text="I'm in a meeting", variable=self.meeting_var,
+            command=self.on_meeting_checkbox, bg=CARD_BG, fg=TEXT_PRIMARY,
+            activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
+            selectcolor=CARD_BG, font=("Aptos", 9), cursor="hand2",
+        ).pack(anchor="w", pady=(0, 14))
+
+        btn_frame = tk.Frame(parent, bg=CARD_BG)
         btn_frame.pack(fill="x")
         btn_frame.columnconfigure(0, weight=1)
         btn_frame.columnconfigure(1, weight=1)
@@ -184,8 +295,236 @@ class AirSquatApp:
         )
         self.sleep_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
 
-        self.update_stats_label()
-        self.tick()
+    # ---------- settings view ----------
+
+    def build_settings_view(self):
+        parent = self.settings_frame
+
+        header = tk.Frame(parent, bg=CARD_BG)
+        header.pack(fill="x", pady=(0, 12))
+        tk.Button(
+            header, text="← Back", command=self.show_main, bg=CARD_BG, fg=ACCENT,
+            activebackground=CARD_BG, activeforeground=ACCENT_DARK, relief="flat", bd=0,
+            font=("Aptos", 10, "bold"), cursor="hand2",
+        ).pack(side="left")
+        tk.Label(
+            header, text="SETTINGS", font=("Aptos", 11, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+        ).pack(side="left", padx=(10, 0))
+
+        self._section_label(parent, "PREFERENCES")
+
+        self.always_on_top_var = tk.BooleanVar(
+            value=self.stats["settings"].get("always_on_top", True)
+        )
+        tk.Checkbutton(
+            parent, text="Always on top", variable=self.always_on_top_var,
+            command=self.on_always_on_top_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
+            activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
+            selectcolor=CARD_BG, font=("Aptos", 10), cursor="hand2",
+        ).pack(anchor="w")
+
+        self.auto_detect_var = tk.BooleanVar(
+            value=self.stats["settings"].get("auto_detect_teams", False)
+        )
+        tk.Checkbutton(
+            parent, text="Auto-detect Teams calls (beta)", variable=self.auto_detect_var,
+            command=self.on_auto_detect_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
+            activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
+            selectcolor=CARD_BG, font=("Aptos", 10), cursor="hand2",
+        ).pack(anchor="w", pady=(0, 14))
+
+        self._section_label(parent, "LAST 7 DAYS")
+        self.week_frame = tk.Frame(parent, bg=CARD_BG)
+        self.week_frame.pack(fill="x", pady=(0, 4))
+
+        self.settings_all_time_label = tk.Label(
+            parent, font=("Aptos", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+        )
+        self.settings_all_time_label.pack(anchor="w", pady=(0, 14))
+
+        self._section_label(parent, "UPDATES")
+        tk.Label(
+            parent, text=f"Version {APP_VERSION}", font=("Aptos", 9),
+            bg=CARD_BG, fg=TEXT_SECONDARY,
+        ).pack(anchor="w", pady=(0, 6))
+
+        self.check_updates_btn = flat_button(
+            parent, "Check for Updates", self.on_check_updates,
+            NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, font_size=9, width=18,
+        )
+        self.check_updates_btn.pack(anchor="w")
+
+        self.update_status_label = tk.Label(
+            parent, text="", font=("Aptos", 9), bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260,
+            justify="left",
+        )
+        self.update_status_label.pack(anchor="w", pady=(6, 0))
+
+        self.download_btn = flat_button(
+            parent, "Download & Restart", self.on_download_update,
+            ACCENT, "#ffffff", font_size=9, width=18,
+        )
+
+    def _section_label(self, parent, text):
+        tk.Label(
+            parent, text=text, font=("Aptos", 8, "bold"), bg=CARD_BG, fg=TEXT_SECONDARY,
+        ).pack(anchor="w", pady=(0, 4))
+
+    def show_settings(self):
+        self.main_frame.pack_forget()
+        self.refresh_week_dashboard()
+        self.settings_frame.pack()
+
+    def show_main(self):
+        self.settings_frame.pack_forget()
+        self.main_frame.pack()
+
+    def refresh_week_dashboard(self):
+        for widget in self.week_frame.winfo_children():
+            widget.destroy()
+
+        today = datetime.now().date()
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            key = day.strftime("%Y-%m-%d")
+            entry = self.stats["daily"].get(key, {"hits": 0, "misses": 0})
+            row = tk.Frame(self.week_frame, bg=CARD_BG)
+            row.pack(fill="x", pady=1)
+            tk.Label(
+                row, text=day.strftime("%a %m/%d"), font=("Aptos", 9),
+                bg=CARD_BG, fg=TEXT_PRIMARY, width=10, anchor="w",
+            ).pack(side="left")
+            tk.Label(
+                row, text=f"● {entry['hits']}", font=("Aptos", 9, "bold"),
+                bg=CARD_BG, fg=HIT_COLOR, width=6, anchor="w",
+            ).pack(side="left")
+            tk.Label(
+                row, text=f"● {entry['misses']}", font=("Aptos", 9, "bold"),
+                bg=CARD_BG, fg=MISS_COLOR, width=6, anchor="w",
+            ).pack(side="left")
+
+        all_time = self.stats["all_time"]
+        self.settings_all_time_label.config(
+            text=f"All-time: {all_time['hits']} hit / {all_time['misses']} miss"
+        )
+
+    # ---------- settings actions ----------
+
+    def on_always_on_top_changed(self):
+        value = self.always_on_top_var.get()
+        self.stats["settings"]["always_on_top"] = value
+        save_stats(self.stats)
+        self.root.attributes("-topmost", value)
+
+    def on_auto_detect_changed(self):
+        self.stats["settings"]["auto_detect_teams"] = self.auto_detect_var.get()
+        save_stats(self.stats)
+
+    def on_check_updates(self):
+        self.check_updates_btn.config(state="disabled")
+        self.download_btn.pack_forget()
+        self.update_status_label.config(text="Checking...", fg=TEXT_SECONDARY)
+        threading.Thread(target=self._check_updates_worker, daemon=True).start()
+
+    def _check_updates_worker(self):
+        try:
+            tag, url = fetch_latest_release()
+        except Exception:
+            self.root.after(0, self._check_updates_failed)
+            return
+        self.root.after(0, self._check_updates_done, tag, url)
+
+    def _check_updates_failed(self):
+        self.check_updates_btn.config(state="normal")
+        self.update_status_label.config(
+            text="Couldn't check for updates. Try again later.", fg=MISS_COLOR
+        )
+
+    def _check_updates_done(self, tag, url):
+        self.check_updates_btn.config(state="normal")
+        if not tag:
+            self.update_status_label.config(
+                text="Couldn't check for updates. Try again later.", fg=MISS_COLOR
+            )
+            return
+        if is_newer(tag, APP_VERSION):
+            if getattr(sys, "frozen", False) and url:
+                self.pending_update_url = url
+                self.update_status_label.config(
+                    text=f"Update available: v{tag}", fg=ACCENT
+                )
+                self.download_btn.pack(anchor="w", pady=(6, 0))
+            else:
+                self.update_status_label.config(
+                    text=f"Update available: v{tag} — run 'git pull' to get it "
+                         "(auto-update only works in the packaged .exe).",
+                    fg=ACCENT,
+                )
+        else:
+            self.update_status_label.config(
+                text=f"You're up to date (v{APP_VERSION}).", fg=HIT_COLOR
+            )
+
+    def on_download_update(self):
+        if not self.pending_update_url:
+            return
+        self.download_btn.config(state="disabled")
+        self.check_updates_btn.config(state="disabled")
+        self.update_status_label.config(text="Downloading update...", fg=TEXT_SECONDARY)
+        threading.Thread(
+            target=self._download_update_worker, args=(self.pending_update_url,), daemon=True
+        ).start()
+
+    def _download_update_worker(self, url):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "AirSquat-App"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                content = resp.read()
+            new_path = os.path.join(data_dir(), "AirSquat_new.exe")
+            with open(new_path, "wb") as f:
+                f.write(content)
+        except Exception:
+            self.root.after(0, self._download_update_failed)
+            return
+        self.root.after(0, self._download_update_done, new_path)
+
+    def _download_update_failed(self):
+        self.download_btn.config(state="normal")
+        self.check_updates_btn.config(state="normal")
+        self.update_status_label.config(text="Download failed. Try again.", fg=MISS_COLOR)
+
+    def _download_update_done(self, new_path):
+        self.update_status_label.config(text="Restarting...", fg=TEXT_SECONDARY)
+        self.launch_updater_and_exit(new_path)
+
+    def launch_updater_and_exit(self, new_path):
+        old_path = os.path.join(data_dir(), "AirSquat.exe")
+        bat_path = os.path.join(data_dir(), "_airsquat_update.bat")
+        pid = os.getpid()
+        bat_content = (
+            "@echo off\r\n"
+            ":waitloop\r\n"
+            f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL\r\n'
+            'if "%ERRORLEVEL%"=="0" (\r\n'
+            "    timeout /t 1 /nobreak >nul\r\n"
+            "    goto waitloop\r\n"
+            ")\r\n"
+            f'move /y "{new_path}" "{old_path}" >nul\r\n'
+            f'start "" "{old_path}"\r\n'
+            'del "%~f0"\r\n'
+        )
+        with open(bat_path, "w") as f:
+            f.write(bat_content)
+        subprocess.Popen(
+            ["cmd", "/c", bat_path],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+        save_stats(self.stats)
+        self.root.destroy()
+        os._exit(0)
+
+    # ---------- interval ----------
 
     def select_interval(self, minutes):
         if self.state != "stopped":
@@ -208,6 +547,25 @@ class AirSquatApp:
                 disabledforeground=fg if selected else DISABLED_FG,
             )
 
+    # ---------- meeting awareness ----------
+
+    def on_meeting_checkbox(self):
+        self.set_meeting_active(self.meeting_var.get())
+
+    def set_meeting_active(self, active):
+        if active == self.meeting_active:
+            return
+        self.meeting_active = active
+        self.meeting_var.set(active)
+        if active:
+            if self.state == "reminder_active" and self.banner is not None:
+                self.close_banner()
+        else:
+            if self.state == "running" and self.next_fire is not None and datetime.now() >= self.next_fire:
+                self.fire_reminder()
+
+    # ---------- start / pause ----------
+
     def on_start(self):
         self.state = "running"
         self.active_interval = timedelta(minutes=self.interval_var.get())
@@ -225,6 +583,8 @@ class AirSquatApp:
         self.start_btn.config(state="normal")
         self.sleep_btn.config(state="disabled")
         self.refresh_interval_buttons()
+
+    # ---------- stats ----------
 
     def log_result(self, kind):
         day = today_key()
@@ -244,16 +604,26 @@ class AirSquatApp:
             text=f"All-time: {all_time['hits']} hit / {all_time['misses']} miss"
         )
 
+    # ---------- main loop ----------
+
     def tick(self):
         self.clock_label.config(text=datetime.now().strftime("%H:%M:%S"))
 
+        if self.auto_detect_var.get():
+            desired = teams_mic_active()
+            if desired != self.meeting_active:
+                self.set_meeting_active(desired)
+
         if self.state == "running":
-            remaining = self.next_fire - datetime.now()
-            if remaining.total_seconds() <= 0:
-                self.fire_reminder()
+            if self.meeting_active:
+                self.countdown_label.config(text="In a meeting — reminder paused")
             else:
-                mins, secs = divmod(int(remaining.total_seconds()), 60)
-                self.countdown_label.config(text=f"Next squats in {mins:02d}:{secs:02d}")
+                remaining = self.next_fire - datetime.now()
+                if remaining.total_seconds() <= 0:
+                    self.fire_reminder()
+                else:
+                    mins, secs = divmod(int(remaining.total_seconds()), 60)
+                    self.countdown_label.config(text=f"Next squats in {mins:02d}:{secs:02d}")
         elif self.state == "reminder_active":
             remaining = self.next_fire - datetime.now()
             if remaining.total_seconds() <= 0:
@@ -292,11 +662,11 @@ class AirSquatApp:
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
         tk.Label(
-            self.banner, text="10 AIR SQUATS!", font=("Segoe UI", 24, "bold"),
+            self.banner, text="10 AIR SQUATS!", font=("Aptos", 24, "bold"),
             bg=MISS_COLOR, fg="#ffffff",
         ).pack(pady=(28, 8))
         tk.Label(
-            self.banner, text="Get up and knock them out.", font=("Segoe UI", 11),
+            self.banner, text="Get up and knock them out.", font=("Aptos", 11),
             bg=MISS_COLOR, fg="#ffe4e4",
         ).pack(pady=(0, 22))
 
@@ -308,7 +678,7 @@ class AirSquatApp:
         ).grid(row=0, column=0, padx=10)
 
         flat_button(
-            btn_frame, "Sleep", self.on_banner_sleep, "#7f1d1d", "#ffffff", width=12,
+            btn_frame, "Skip", self.on_banner_skip, "#7f1d1d", "#ffffff", width=12,
         ).grid(row=0, column=1, padx=10)
 
         self.banner.lift()
@@ -325,7 +695,7 @@ class AirSquatApp:
         self.log_result("hits")
         self.close_banner()
 
-    def on_banner_sleep(self):
+    def on_banner_skip(self):
         self.log_result("misses")
         self.close_banner()
 

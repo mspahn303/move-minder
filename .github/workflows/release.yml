@@ -22,7 +22,7 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --icon=icon.ico --name AirSquat --add-data "icon.ico;." airsquat.py
+        run: pyinstaller --onefile --windowed --icon=icon.ico --name AirSquat --add-data "icon.ico;." --add-data "gear.png;." airsquat.py
 
       - name: Create GitHub Release
         env:
