@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 import urllib.request
 from datetime import datetime, timedelta
+from tkinter import messagebox
 
 try:
     import winsound
@@ -18,7 +19,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -34,8 +35,11 @@ EXERCISES = [
     {"id": "jumping_jacks", "name": "Jumping Jacks", "baseline_reps": 10, "difficulty": "easy"},
 ]
 
-SESSION_MIN_REPS_PER_EXERCISE = 5
-SESSION_MAX_TOTAL_REPS = 20
+# Single-exercise sessions pick a rep count from this list. Combo (2-exercise)
+# sessions are always split evenly at the minimum since min-per-exercise * 2
+# already equals the max -- there's no room left for any other split.
+SESSION_REP_CHOICES = [10, 15, 20]
+SESSION_COMBO_REPS_EACH = 10
 
 # Base XP per difficulty tier, and how much it decays per level toward a floor
 # (as a fraction of base). Easy decays fastest, hard barely decays -- the pull
@@ -97,14 +101,10 @@ def build_session(stats, previous_session):
         pool = ids
     chosen = random.sample(pool, size) if len(pool) >= size else random.sample(ids, size)
 
-    total_reps = random.randint(SESSION_MIN_REPS_PER_EXERCISE * size, SESSION_MAX_TOTAL_REPS)
     if size == 1:
-        reps_list = [total_reps]
+        reps_list = [random.choice(SESSION_REP_CHOICES)]
     else:
-        first = random.randint(
-            SESSION_MIN_REPS_PER_EXERCISE, total_reps - SESSION_MIN_REPS_PER_EXERCISE
-        )
-        reps_list = [first, total_reps - first]
+        reps_list = [SESSION_COMBO_REPS_EACH, SESSION_COMBO_REPS_EACH]
 
     return list(zip(chosen, reps_list))
 
@@ -158,6 +158,7 @@ def load_stats():
     settings.setdefault("interval_minutes", DEFAULT_INTERVAL)
     settings.setdefault("always_on_top", True)
     settings.setdefault("auto_detect_teams", False)
+    settings.setdefault("show_meeting_checkbox", True)
     exercise_enabled = settings.setdefault("exercise_enabled", {})
     for ex in EXERCISES:
         exercise_enabled.setdefault(ex["id"], True)
@@ -406,12 +407,14 @@ class MoveMinderApp:
         self.all_time_label.pack(anchor="w", pady=(0, 10))
 
         self.meeting_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
+        self.meeting_checkbox = tk.Checkbutton(
             parent, text="I'm in a meeting", variable=self.meeting_var,
             command=self.on_meeting_checkbox, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
             selectcolor=CARD_BG, font=("Candara", 9), cursor="hand2",
-        ).pack(anchor="w", pady=(0, 14))
+        )
+        if self.stats["settings"].get("show_meeting_checkbox", True):
+            self.meeting_checkbox.pack(anchor="w", pady=(0, 14))
 
         btn_frame = tk.Frame(parent, bg=CARD_BG)
         btn_frame.pack(fill="x")
@@ -471,6 +474,16 @@ class MoveMinderApp:
             command=self.on_auto_detect_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
             selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+        ).pack(anchor="w")
+
+        self.show_meeting_checkbox_var = tk.BooleanVar(
+            value=self.stats["settings"].get("show_meeting_checkbox", True)
+        )
+        tk.Checkbutton(
+            parent, text="Show \"I'm in a meeting\" checkbox on main window",
+            variable=self.show_meeting_checkbox_var, command=self.on_show_meeting_checkbox_changed,
+            bg=CARD_BG, fg=TEXT_PRIMARY, activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
+            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
         ).pack(anchor="w", pady=(0, 14))
 
         self._section_label(parent, "EXERCISES")
@@ -500,6 +513,25 @@ class MoveMinderApp:
             parent, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.settings_all_time_label.pack(anchor="w", pady=(0, 14))
+
+        self._section_label(parent, "DATA")
+        reset_frame = tk.Frame(parent, bg=CARD_BG)
+        reset_frame.pack(fill="x", pady=(0, 4))
+
+        flat_button(
+            reset_frame, "Reset Daily Stats", self.on_reset_daily_stats,
+            NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, font_size=9, width=16,
+        ).grid(row=0, column=0, padx=(0, 6))
+
+        flat_button(
+            reset_frame, "Reset All Stats", self.on_reset_all_stats,
+            NEUTRAL_BTN_BG, MISS_COLOR, font_size=9, width=16,
+        ).grid(row=0, column=1, padx=(6, 0))
+
+        self.reset_status_label = tk.Label(
+            parent, text="", font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+        )
+        self.reset_status_label.pack(anchor="w", pady=(6, 14))
 
         self._section_label(parent, "UPDATES")
         tk.Label(
@@ -578,6 +610,46 @@ class MoveMinderApp:
     def on_auto_detect_changed(self):
         self.stats["settings"]["auto_detect_teams"] = self.auto_detect_var.get()
         save_stats(self.stats)
+
+    def on_show_meeting_checkbox_changed(self):
+        value = self.show_meeting_checkbox_var.get()
+        self.stats["settings"]["show_meeting_checkbox"] = value
+        save_stats(self.stats)
+        if value:
+            self.meeting_checkbox.pack(anchor="w", pady=(0, 14))
+        else:
+            self.meeting_checkbox.pack_forget()
+
+    def on_reset_daily_stats(self):
+        if not messagebox.askyesno(
+            "Reset Daily Stats",
+            "Clear all day-by-day history? All-time totals and your level/XP "
+            "are not affected.",
+            parent=self.settings_frame.winfo_toplevel(),
+        ):
+            return
+        self.stats["daily"] = {}
+        save_stats(self.stats)
+        self.update_stats_label()
+        self.refresh_week_dashboard()
+        self.reset_status_label.config(text="Daily stats cleared.", fg=HIT_COLOR)
+
+    def on_reset_all_stats(self):
+        if not messagebox.askyesno(
+            "Reset All Stats",
+            "Wipe daily history, all-time totals, and your level/XP back to "
+            "zero? This can't be undone.",
+            parent=self.settings_frame.winfo_toplevel(),
+        ):
+            return
+        self.stats["daily"] = {}
+        self.stats["all_time"] = {"hits": 0, "misses": 0, "by_exercise": {}}
+        self.stats["gamification"]["total_xp"] = 0
+        save_stats(self.stats)
+        self.update_stats_label()
+        self.update_xp_display()
+        self.refresh_week_dashboard()
+        self.reset_status_label.config(text="All stats reset.", fg=HIT_COLOR)
 
     def on_exercise_toggle(self, ex_id):
         still_enabled = [eid for eid, var in self.exercise_vars.items() if var.get()]

@@ -19,10 +19,10 @@ no install, no Python required. Just download and double-click.
 - Press **Start** to begin the countdown.
 - When it hits zero, a banner pops up with a beep showing a randomly generated
   session — one exercise most of the time, sometimes two back-to-back (e.g.
-  **9 SQUATS!** + **8 SIT-UPS!**) — picked from Squats, Push-ups, Sit-ups,
+  **10 SQUATS!** + **10 SIT-UPS!**) — picked from Squats, Push-ups, Sit-ups,
   Burpees, and Jumping Jacks, never repeating the same exercise set twice in a
-  row. Reps are randomized too: each exercise gets at least 5, with the whole
-  session capped at 20 reps total.
+  row. Single-exercise sessions get a random rep count of 10, 15, or 20; combo
+  sessions are always split evenly at 10 reps each.
   - **Doing it** — logs a hit for the whole session, awards XP, and restarts
     the countdown.
   - **Skip** — logs a miss for the whole session, dismisses the banner, and
@@ -38,9 +38,10 @@ no install, no Python required. Just download and double-click.
   hard ones do — so the higher your level, the more the game nudges you toward
   tougher exercises to keep progressing at a good pace. Leveling up triggers a
   brief celebration popup.
-- **"I'm in a meeting"** checkbox suppresses reminders while checked (no miss
-  logged) — when you uncheck it, any reminder that was due fires immediately,
-  then the timer restarts fresh from that moment.
+- **"I'm in a meeting"** checkbox (optional, see Settings) suppresses
+  reminders while checked (no miss logged) — when you uncheck it, any
+  reminder that was due fires immediately, then the timer restarts fresh
+  from that moment.
 - **Impromptu Session** button (below Start/Sleep) fires off a session on
   demand — handy for squeezing one in before a meeting eats your next
   scheduled reminder. Works whether the timer is running or stopped. If it
@@ -54,13 +55,20 @@ no install, no Python required. Just download and double-click.
 
 - **Always on top** — toggle whether the window stays above other windows.
 - **Auto-detect Teams calls (beta)** — when enabled, the app checks whether
-  Teams currently has your microphone open and automatically checks/unchecks
-  "I'm in a meeting" for you. It's a heuristic (no Teams login or API involved),
-  not a guarantee — you can always override it manually, including for non-Teams
-  calls.
+  Teams currently has your microphone open and automatically suppresses
+  reminders during meetings. It's a heuristic (no Teams login or API
+  involved), not a guarantee, and it keeps working even if you hide the
+  meeting checkbox below.
+- **Show "I'm in a meeting" checkbox on main window** — turn off if you rely
+  on auto-detect and don't want the manual checkbox cluttering the main
+  window. Auto-detect keeps running regardless of this setting.
 - **Exercises** — enable/disable individual exercises from the rotation (at
   least one must stay enabled).
 - **Last 7 days** — a day-by-day hit/miss dashboard, plus all-time totals.
+- **Reset Daily Stats** — clears the day-by-day history (with a confirmation
+  prompt). All-time totals and your level/XP are untouched.
+- **Reset All Stats** — wipes daily history, all-time totals, and level/XP
+  back to zero (with a confirmation prompt). Can't be undone.
 - **Check for Updates** — queries this repo's latest GitHub Release. If a newer
   version exists and you're running the packaged `.exe`, one click downloads it
   and restarts the app on the new version automatically. Running from source
