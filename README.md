@@ -92,10 +92,19 @@ pyinstaller --onefile --windowed --icon=icon.ico --name MoveMinder ^
   --add-data "anim_situps_0.png;." --add-data "anim_situps_1.png;." ^
   --add-data "anim_burpees_0.png;." --add-data "anim_burpees_1.png;." ^
   --add-data "anim_jumping_jacks_0.png;." --add-data "anim_jumping_jacks_1.png;." ^
+  --add-binary "C:\Windows\System32\msvcp140.dll;." ^
+  --add-binary "C:\Windows\System32\vcruntime140_1.dll;." ^
   move_minder.py
 ```
 
 The built exe will be in `dist/MoveMinder.exe`.
+
+> The two `--add-binary` flags matter: PyInstaller's automatic dependency
+> scan doesn't reliably pick up `msvcp140.dll` / `vcruntime140_1.dll`, even
+> though `python3xx.dll` needs them. Without bundling them explicitly, the
+> exe only works on machines that happen to already have the Visual C++
+> Redistributable installed — anywhere else it fails with "Failed to load
+> Python DLL ... LoadLibrary: The specified module could not be found."
 
 Pushing a version tag (e.g. `v2.0.0`) triggers a GitHub Actions workflow that
 builds the exe and attaches it to a new GitHub Release automatically. When you

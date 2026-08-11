@@ -30,6 +30,8 @@ jobs:
           --add-data "anim_situps_0.png;." --add-data "anim_situps_1.png;."
           --add-data "anim_burpees_0.png;." --add-data "anim_burpees_1.png;."
           --add-data "anim_jumping_jacks_0.png;." --add-data "anim_jumping_jacks_1.png;."
+          --add-binary "C:\Windows\System32\msvcp140.dll;."
+          --add-binary "C:\Windows\System32\vcruntime140_1.dll;."
           move_minder.py
 
       - name: Create GitHub Release
