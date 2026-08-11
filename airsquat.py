@@ -17,7 +17,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 GITHUB_REPO = "mspahn303/airsquat"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -186,6 +186,7 @@ class AirSquatApp:
         self.active_interval = None
         self.meeting_active = False
         self.pending_update_url = None
+        self.current_day = today_key()
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -608,6 +609,11 @@ class AirSquatApp:
 
     def tick(self):
         self.clock_label.config(text=datetime.now().strftime("%H:%M:%S"))
+
+        day = today_key()
+        if day != self.current_day:
+            self.current_day = day
+            self.update_stats_label()
 
         if self.auto_detect_var.get():
             desired = teams_mic_active()
