@@ -17,7 +17,9 @@ no install, no Python required. Just download and double-click.
 
 - Pick a reminder interval: **15, 30, 45, or 60 minutes**.
 - Press **Start** to begin the countdown.
-- When it hits zero, a banner pops up with a beep: **10 AIR SQUATS!**
+- When it hits zero, a banner pops up with a beep showing one randomly picked
+  exercise — **10 SQUATS!**, **10 PUSH-UPS!**, **10 SIT-UPS!**, **10 BURPEES!**,
+  or **10 JUMPING JACKS!** — never the same one twice in a row.
   - **Doing it** — logs a hit and restarts the countdown.
   - **Skip** — logs a miss, dismisses the banner, restarts the countdown.
   - Ignore it completely and it auto-logs as a miss once the next interval starts.
@@ -37,6 +39,8 @@ no install, no Python required. Just download and double-click.
   "I'm in a meeting" for you. It's a heuristic (no Teams login or API involved),
   not a guarantee — you can always override it manually, including for non-Teams
   calls.
+- **Exercises** — enable/disable individual exercises from the rotation (at
+  least one must stay enabled).
 - **Last 7 days** — a day-by-day hit/miss dashboard, plus all-time totals.
 - **Check for Updates** — queries this repo's latest GitHub Release. If a newer
   version exists and you're running the packaged `.exe`, one click downloads it

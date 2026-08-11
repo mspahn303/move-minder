@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import subprocess
 import sys
 import threading
@@ -17,11 +18,34 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
 DEFAULT_INTERVAL = 60
+
+# "difficulty" isn't consumed anywhere yet -- it's here for the leveling/XP
+# system planned for the next phase, so that work won't need a data migration.
+EXERCISES = [
+    {"id": "squats", "name": "Squats", "reps": 10, "difficulty": "easy"},
+    {"id": "pushups", "name": "Push-ups", "reps": 10, "difficulty": "medium"},
+    {"id": "situps", "name": "Sit-ups", "reps": 10, "difficulty": "easy"},
+    {"id": "burpees", "name": "Burpees", "reps": 10, "difficulty": "hard"},
+    {"id": "jumping_jacks", "name": "Jumping Jacks", "reps": 10, "difficulty": "easy"},
+]
+
+
+def exercise_by_id(ex_id):
+    for ex in EXERCISES:
+        if ex["id"] == ex_id:
+            return ex
+    return EXERCISES[0]
+
+
+def enabled_exercise_ids(stats):
+    enabled = stats["settings"].get("exercise_enabled", {})
+    ids = [ex["id"] for ex in EXERCISES if enabled.get(ex["id"], True)]
+    return ids if ids else [ex["id"] for ex in EXERCISES]
 
 BG = "#f4f5f7"
 CARD_BG = "#ffffff"
@@ -67,11 +91,15 @@ def load_stats():
     else:
         data = {}
     data.setdefault("daily", {})
-    data.setdefault("all_time", {"hits": 0, "misses": 0})
+    all_time = data.setdefault("all_time", {"hits": 0, "misses": 0})
+    all_time.setdefault("by_exercise", {})
     settings = data.setdefault("settings", {})
     settings.setdefault("interval_minutes", DEFAULT_INTERVAL)
     settings.setdefault("always_on_top", True)
     settings.setdefault("auto_detect_teams", False)
+    exercise_enabled = settings.setdefault("exercise_enabled", {})
+    for ex in EXERCISES:
+        exercise_enabled.setdefault(ex["id"], True)
     return data
 
 
@@ -191,6 +219,7 @@ class MoveMinderApp:
         self.pending_update_url = None
         self.pending_update_name = None
         self.current_day = today_key()
+        self.current_exercise = None
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -338,6 +367,25 @@ class MoveMinderApp:
             selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
         ).pack(anchor="w", pady=(0, 14))
 
+        self._section_label(parent, "EXERCISES")
+        self.exercise_vars = {}
+        exercise_enabled = self.stats["settings"].get("exercise_enabled", {})
+        for ex in EXERCISES:
+            var = tk.BooleanVar(value=exercise_enabled.get(ex["id"], True))
+            self.exercise_vars[ex["id"]] = var
+            tk.Checkbutton(
+                parent, text=ex["name"], variable=var,
+                command=lambda ex_id=ex["id"]: self.on_exercise_toggle(ex_id),
+                bg=CARD_BG, fg=TEXT_PRIMARY, activebackground=CARD_BG,
+                activeforeground=TEXT_PRIMARY, selectcolor=CARD_BG,
+                font=("Candara", 10), cursor="hand2",
+            ).pack(anchor="w")
+
+        self.exercise_warning_label = tk.Label(
+            parent, text="", font=("Candara", 8), bg=CARD_BG, fg=MISS_COLOR,
+        )
+        self.exercise_warning_label.pack(anchor="w", pady=(2, 14))
+
         self._section_label(parent, "LAST 7 DAYS")
         self.week_frame = tk.Frame(parent, bg=CARD_BG)
         self.week_frame.pack(fill="x", pady=(0, 4))
@@ -423,6 +471,16 @@ class MoveMinderApp:
 
     def on_auto_detect_changed(self):
         self.stats["settings"]["auto_detect_teams"] = self.auto_detect_var.get()
+        save_stats(self.stats)
+
+    def on_exercise_toggle(self, ex_id):
+        still_enabled = [eid for eid, var in self.exercise_vars.items() if var.get()]
+        if not still_enabled:
+            self.exercise_vars[ex_id].set(True)
+            self.exercise_warning_label.config(text="At least one exercise must stay enabled.")
+            return
+        self.exercise_warning_label.config(text="")
+        self.stats["settings"]["exercise_enabled"][ex_id] = self.exercise_vars[ex_id].get()
         save_stats(self.stats)
 
     def on_check_updates(self):
@@ -603,9 +661,20 @@ class MoveMinderApp:
 
     def log_result(self, kind):
         day = today_key()
-        self.stats["daily"].setdefault(day, {"hits": 0, "misses": 0})
-        self.stats["daily"][day][kind] += 1
+        day_entry = self.stats["daily"].setdefault(day, {"hits": 0, "misses": 0})
+        day_entry.setdefault("by_exercise", {})
+        day_entry[kind] += 1
+
+        ex_id = self.current_exercise or EXERCISES[0]["id"]
+        day_ex = day_entry["by_exercise"].setdefault(ex_id, {"hits": 0, "misses": 0})
+        day_ex[kind] += 1
+
         self.stats["all_time"][kind] += 1
+        all_time_ex = self.stats["all_time"]["by_exercise"].setdefault(
+            ex_id, {"hits": 0, "misses": 0}
+        )
+        all_time_ex[kind] += 1
+
         save_stats(self.stats)
         self.update_stats_label()
 
@@ -643,7 +712,7 @@ class MoveMinderApp:
                     self.fire_reminder()
                 else:
                     mins, secs = divmod(int(remaining.total_seconds()), 60)
-                    self.countdown_label.config(text=f"Next squats in {mins:02d}:{secs:02d}")
+                    self.countdown_label.config(text=f"Next reminder in {mins:02d}:{secs:02d}")
         elif self.state == "reminder_active":
             remaining = self.next_fire - datetime.now()
             if remaining.total_seconds() <= 0:
@@ -657,15 +726,22 @@ class MoveMinderApp:
 
         self.root.after(1000, self.tick)
 
+    def pick_exercise(self):
+        ids = enabled_exercise_ids(self.stats)
+        choices = [i for i in ids if i != self.current_exercise] if len(ids) > 1 else ids
+        self.current_exercise = random.choice(choices)
+
     def fire_reminder(self):
         self.state = "reminder_active"
         self.next_fire = datetime.now() + self.active_interval
+        self.pick_exercise()
         beep()
         self.open_banner()
 
     def open_banner(self):
+        exercise = exercise_by_id(self.current_exercise)
         self.banner = tk.Toplevel(self.root)
-        self.banner.title("Squat time!")
+        self.banner.title("Move time!")
         self.banner.configure(bg=MISS_COLOR)
         self.banner.attributes("-topmost", True)
         self.banner.resizable(False, False)
@@ -682,8 +758,8 @@ class MoveMinderApp:
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
         tk.Label(
-            self.banner, text="10 AIR SQUATS!", font=("Candara", 24, "bold"),
-            bg=MISS_COLOR, fg="#ffffff",
+            self.banner, text=f"{exercise['reps']} {exercise['name'].upper()}!",
+            font=("Candara", 24, "bold"), bg=MISS_COLOR, fg="#ffffff",
         ).pack(pady=(28, 8))
         tk.Label(
             self.banner, text="Get up and knock them out.", font=("Candara", 11),
