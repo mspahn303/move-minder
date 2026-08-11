@@ -18,7 +18,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.4.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -287,6 +287,7 @@ class MoveMinderApp:
         self.banner_anim_rows = []
         self.banner_anim_index = 0
         self.banner_anim_after_id = None
+        self.pre_impromptu_state = None
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -427,6 +428,12 @@ class MoveMinderApp:
             width=9, state="disabled",
         )
         self.sleep_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+        self.impromptu_btn = flat_button(
+            parent, "Impromptu Session", self.on_impromptu_session,
+            NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, font_size=9, width=20,
+        )
+        self.impromptu_btn.pack(fill="x", pady=(8, 0))
 
     # ---------- settings view ----------
 
@@ -874,7 +881,21 @@ class MoveMinderApp:
         beep()
         self.open_banner()
 
+    def on_impromptu_session(self):
+        if self.state == "reminder_active":
+            return
+        self.pre_impromptu_state = self.state
+        interval = self.active_interval or timedelta(minutes=self.interval_var.get())
+        self.active_interval = interval
+        self.next_fire = datetime.now() + interval
+        self.state = "reminder_active"
+        self.current_session = build_session(self.stats, self.current_session)
+        beep()
+        self.open_banner()
+
     def open_banner(self):
+        self.impromptu_btn.config(state="disabled")
+        self.refresh_interval_buttons()
         self.banner = tk.Toplevel(self.root)
         self.banner.title("Move time!")
         self.banner.configure(bg=MISS_COLOR)
@@ -946,8 +967,13 @@ class MoveMinderApp:
             self.banner.destroy()
             self.banner = None
             self.banner_anim_rows = []
+        self.impromptu_btn.config(state="normal")
         if self.state == "reminder_active":
-            self.state = "running"
+            self.state = self.pre_impromptu_state if self.pre_impromptu_state is not None else "running"
+        self.pre_impromptu_state = None
+        if self.state == "stopped":
+            self.next_fire = None
+        self.refresh_interval_buttons()
 
     def on_doing_it(self):
         self.log_result("hits")

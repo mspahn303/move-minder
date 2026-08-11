@@ -41,6 +41,12 @@ no install, no Python required. Just download and double-click.
 - **"I'm in a meeting"** checkbox suppresses reminders while checked (no miss
   logged) — when you uncheck it, any reminder that was due fires immediately,
   then the timer restarts fresh from that moment.
+- **Impromptu Session** button (below Start/Sleep) fires off a session on
+  demand — handy for squeezing one in before a meeting eats your next
+  scheduled reminder. Works whether the timer is running or stopped. If it
+  was running, the countdown restarts fresh from that moment; if it was
+  stopped, it stays stopped afterward. Counts toward stats and XP exactly
+  like a normal reminder.
 - Hit/miss stats are saved to `stats.json` next to the app and persist across
   restarts and reboots.
 
