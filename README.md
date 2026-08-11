@@ -1,11 +1,13 @@
-# AirSquat
+# Move Minder
 
-A tiny Windows app that reminds you to do 10 air squats on a timer, tracks how
-often you actually do them, and beeps at you until you do.
+A tiny Windows app that reminds you to get up and move on a timer, tracks how
+often you actually do it, and beeps at you until you do.
+
+> Formerly known as AirSquat — renamed as the app grows beyond just squats.
 
 ## Download
 
-Grab the latest `AirSquat.exe` from the [Releases page](../../releases/latest) —
+Grab the latest `MoveMinder.exe` from the [Releases page](../../releases/latest) —
 no install, no Python required. Just download and double-click.
 
 > Windows may show a "Windows protected your PC" SmartScreen warning because
@@ -47,15 +49,15 @@ Requires Python 3.10+ on Windows.
 
 ```bash
 pip install pyinstaller pillow
-python make_icon.py   # regenerates icon.ico
-pyinstaller --onefile --windowed --icon=icon.ico --name AirSquat --add-data "icon.ico;." --add-data "gear.png;." airsquat.py
+python make_icon.py   # regenerates icon.ico and gear.png
+pyinstaller --onefile --windowed --icon=icon.ico --name MoveMinder --add-data "icon.ico;." --add-data "gear.png;." move_minder.py
 ```
 
-The built exe will be in `dist/AirSquat.exe`.
+The built exe will be in `dist/MoveMinder.exe`.
 
-Pushing a version tag (e.g. `v1.1.0`) triggers a GitHub Actions workflow that
+Pushing a version tag (e.g. `v2.0.0`) triggers a GitHub Actions workflow that
 builds the exe and attaches it to a new GitHub Release automatically. When you
-cut a release, bump `APP_VERSION` in `airsquat.py` to match the tag first —
+cut a release, bump `APP_VERSION` in `move_minder.py` to match the tag first —
 that's what powers the in-app "Check for Updates" comparison.
 
 ## License

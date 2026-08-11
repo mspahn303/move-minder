@@ -22,33 +22,40 @@ def thick_line(p1, p2, width, fill):
         draw.ellipse([x - r, y - r, x + r, y + r], fill=fill)
 
 
-head_center = (170, 58)
-head_r = 25
-neck = (150, 85)
-hip = (108, 130)
-knee = (174, 160)
-foot = (166, 206)
-shoulder = (146, 94)
-hand = (82, 110)
+cx = 128
+head_center = (cx, 46)
+head_r = 24
+neck = (cx, 74)
+hip = (cx, 138)
+shoulder_l = (cx - 24, 84)
+shoulder_r = (cx + 24, 84)
+hand_l = (cx - 74, 24)
+hand_r = (cx + 74, 24)
+foot_l = (cx - 58, 224)
+foot_r = (cx + 58, 224)
 
-# legs (skin), shorts overlay near hip, shirt torso, sleeve cap, arm, shoe, head, hair
-thick_line(hip, knee, 32, SKIN)
-thick_line(knee, foot, 26, SKIN)
+# legs (skin) with shorts overlay near hip, torso, shoulder caps, arms, shoes, head, hair
+thick_line(hip, foot_l, 26, SKIN)
+thick_line(hip, foot_r, 26, SKIN)
 
-shorts_end = (hip[0] + (knee[0] - hip[0]) * 0.62, hip[1] + (knee[1] - hip[1]) * 0.62)
-thick_line(hip, shorts_end, 37, SHORTS)
+for foot in (foot_l, foot_r):
+    shorts_end = (hip[0] + (foot[0] - hip[0]) * 0.4, hip[1] + (foot[1] - hip[1]) * 0.4)
+    thick_line(hip, shorts_end, 34, SHORTS)
 
-shoe_w, shoe_h = 48, 26
-draw.ellipse(
-    [foot[0] - shoe_w / 2, foot[1] - shoe_h / 2, foot[0] + shoe_w / 2, foot[1] + shoe_h / 2],
-    fill=SHOE, outline=SHOE_OUTLINE, width=3,
-)
+shoe_w, shoe_h = 42, 24
+for foot in (foot_l, foot_r):
+    draw.ellipse(
+        [foot[0] - shoe_w / 2, foot[1] - shoe_h / 2, foot[0] + shoe_w / 2, foot[1] + shoe_h / 2],
+        fill=SHOE, outline=SHOE_OUTLINE, width=3,
+    )
 
-thick_line(neck, hip, 34, SHIRT)
-draw.ellipse(
-    [shoulder[0] - 20, shoulder[1] - 20, shoulder[0] + 20, shoulder[1] + 20], fill=SHIRT,
-)
-thick_line(shoulder, hand, 15, SKIN)
+thick_line(neck, hip, 42, SHIRT)
+for shoulder in (shoulder_l, shoulder_r):
+    draw.ellipse(
+        [shoulder[0] - 18, shoulder[1] - 18, shoulder[0] + 18, shoulder[1] + 18], fill=SHIRT,
+    )
+thick_line(shoulder_l, hand_l, 15, SKIN)
+thick_line(shoulder_r, hand_r, 15, SKIN)
 
 draw.ellipse(
     [head_center[0] - head_r, head_center[1] - head_r,
@@ -56,9 +63,9 @@ draw.ellipse(
     fill=SKIN,
 )
 draw.pieslice(
-    [head_center[0] - head_r - 4, head_center[1] - head_r - 6,
+    [head_center[0] - head_r - 4, head_center[1] - head_r - 4,
      head_center[0] + head_r + 4, head_center[1] + head_r + 4],
-    178, 345, fill=HAIR,
+    182, 358, fill=HAIR,
 )
 
 img.save(

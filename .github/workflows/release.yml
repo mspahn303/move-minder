@@ -22,9 +22,9 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --icon=icon.ico --name AirSquat --add-data "icon.ico;." --add-data "gear.png;." airsquat.py
+        run: pyinstaller --onefile --windowed --icon=icon.ico --name MoveMinder --add-data "icon.ico;." --add-data "gear.png;." move_minder.py
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${{ github.ref_name }} dist/AirSquat.exe --title "AirSquat ${{ github.ref_name }}" --generate-notes
+        run: gh release create ${{ github.ref_name }} dist/MoveMinder.exe --title "Move Minder ${{ github.ref_name }}" --generate-notes

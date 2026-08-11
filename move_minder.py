@@ -17,8 +17,8 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "1.1.2"
-GITHUB_REPO = "mspahn303/airsquat"
+APP_VERSION = "2.0.0"
+GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
 DEFAULT_INTERVAL = 60
@@ -104,17 +104,20 @@ def flat_button(parent, text, command, bg, fg, font_size=11, bold=True, width=10
 def fetch_latest_release():
     req = urllib.request.Request(
         f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-        headers={"User-Agent": "AirSquat-App"},
+        headers={"User-Agent": "MoveMinder-App"},
     )
     with urllib.request.urlopen(req, timeout=8) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     tag = data.get("tag_name", "").lstrip("vV")
     download_url = None
+    asset_name = None
     for asset in data.get("assets", []):
-        if asset.get("name", "").lower() == "airsquat.exe":
+        name = asset.get("name", "")
+        if name.lower().endswith(".exe"):
             download_url = asset.get("browser_download_url")
+            asset_name = name
             break
-    return tag, download_url
+    return tag, download_url, asset_name
 
 
 def parse_version(v):
@@ -167,10 +170,10 @@ def _scan_for_teams_mic(key, path, depth):
     return False
 
 
-class AirSquatApp:
+class MoveMinderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("AirSquat")
+        self.root.title("Move Minder")
         self.root.configure(bg=BG)
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -186,6 +189,7 @@ class AirSquatApp:
         self.active_interval = None
         self.meeting_active = False
         self.pending_update_url = None
+        self.pending_update_name = None
         self.current_day = today_key()
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
@@ -212,7 +216,7 @@ class AirSquatApp:
         header = tk.Frame(parent, bg=CARD_BG)
         header.pack(fill="x")
         tk.Label(
-            header, text="AIRSQUAT", font=("Candara", 11, "bold"),
+            header, text="MOVE MINDER", font=("Candara", 11, "bold"),
             bg=CARD_BG, fg=ACCENT,
         ).pack(side="left")
         self.gear_icon = tk.PhotoImage(file=resource_path("gear.png"))
@@ -429,11 +433,11 @@ class AirSquatApp:
 
     def _check_updates_worker(self):
         try:
-            tag, url = fetch_latest_release()
+            tag, url, asset_name = fetch_latest_release()
         except Exception:
             self.root.after(0, self._check_updates_failed)
             return
-        self.root.after(0, self._check_updates_done, tag, url)
+        self.root.after(0, self._check_updates_done, tag, url, asset_name)
 
     def _check_updates_failed(self):
         self.check_updates_btn.config(state="normal")
@@ -441,7 +445,7 @@ class AirSquatApp:
             text="Couldn't check for updates. Try again later.", fg=MISS_COLOR
         )
 
-    def _check_updates_done(self, tag, url):
+    def _check_updates_done(self, tag, url, asset_name):
         self.check_updates_btn.config(state="normal")
         if not tag:
             self.update_status_label.config(
@@ -449,8 +453,9 @@ class AirSquatApp:
             )
             return
         if is_newer(tag, APP_VERSION):
-            if getattr(sys, "frozen", False) and url:
+            if getattr(sys, "frozen", False) and url and asset_name:
                 self.pending_update_url = url
+                self.pending_update_name = asset_name
                 self.update_status_label.config(
                     text=f"Update available: v{tag}", fg=ACCENT
                 )
@@ -467,41 +472,49 @@ class AirSquatApp:
             )
 
     def on_download_update(self):
-        if not self.pending_update_url:
+        if not self.pending_update_url or not self.pending_update_name:
             return
         self.download_btn.config(state="disabled")
         self.check_updates_btn.config(state="disabled")
         self.update_status_label.config(text="Downloading update...", fg=TEXT_SECONDARY)
         threading.Thread(
-            target=self._download_update_worker, args=(self.pending_update_url,), daemon=True
+            target=self._download_update_worker,
+            args=(self.pending_update_url, self.pending_update_name),
+            daemon=True,
         ).start()
 
-    def _download_update_worker(self, url):
+    def _download_update_worker(self, url, asset_name):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "AirSquat-App"})
+            req = urllib.request.Request(url, headers={"User-Agent": "MoveMinder-App"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 content = resp.read()
-            new_path = os.path.join(data_dir(), "AirSquat_new.exe")
+            new_path = os.path.join(data_dir(), f"_update_{asset_name}")
             with open(new_path, "wb") as f:
                 f.write(content)
         except Exception:
             self.root.after(0, self._download_update_failed)
             return
-        self.root.after(0, self._download_update_done, new_path)
+        self.root.after(0, self._download_update_done, new_path, asset_name)
 
     def _download_update_failed(self):
         self.download_btn.config(state="normal")
         self.check_updates_btn.config(state="normal")
         self.update_status_label.config(text="Download failed. Try again.", fg=MISS_COLOR)
 
-    def _download_update_done(self, new_path):
+    def _download_update_done(self, new_path, asset_name):
         self.update_status_label.config(text="Restarting...", fg=TEXT_SECONDARY)
-        self.launch_updater_and_exit(new_path)
+        self.launch_updater_and_exit(new_path, asset_name)
 
-    def launch_updater_and_exit(self, new_path):
-        old_path = os.path.join(data_dir(), "AirSquat.exe")
-        bat_path = os.path.join(data_dir(), "_airsquat_update.bat")
+    def launch_updater_and_exit(self, new_path, target_name):
+        # target_name comes from the release asset's own filename, not a hardcoded
+        # constant, so this keeps working even if the exe gets renamed again later.
+        old_path = sys.executable
+        target_path = os.path.join(data_dir(), target_name)
+        bat_path = os.path.join(data_dir(), "_moveminder_update.bat")
         pid = os.getpid()
+        cleanup_old = (
+            f'if exist "{old_path}" del "{old_path}"\r\n' if old_path != target_path else ""
+        )
         bat_content = (
             "@echo off\r\n"
             ":waitloop\r\n"
@@ -510,8 +523,9 @@ class AirSquatApp:
             "    timeout /t 1 /nobreak >nul\r\n"
             "    goto waitloop\r\n"
             ")\r\n"
-            f'move /y "{new_path}" "{old_path}" >nul\r\n'
-            f'start "" "{old_path}"\r\n'
+            f'move /y "{new_path}" "{target_path}" >nul\r\n'
+            f"{cleanup_old}"
+            f'start "" "{target_path}"\r\n'
             'del "%~f0"\r\n'
         )
         with open(bat_path, "w") as f:
@@ -712,5 +726,5 @@ class AirSquatApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = AirSquatApp(root)
+    app = MoveMinderApp(root)
     root.mainloop()
