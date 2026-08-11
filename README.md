@@ -28,6 +28,8 @@ no install, no Python required. Just download and double-click.
   - **Skip** — logs a miss for the whole session, dismisses the banner, and
     restarts the countdown.
   - Ignore it completely and it auto-logs as a miss once the next interval starts.
+  - Each exercise in the banner has a small looping animation next to it, so
+    you can see the motion instead of just reading the name.
 - **Sleep** on the main window pauses the whole cycle (e.g. overnight) without
   logging a miss.
 - **Level & XP bar** on the main window tracks your progress. Harder exercises
@@ -64,8 +66,16 @@ Requires Python 3.10+ on Windows.
 
 ```bash
 pip install pyinstaller pillow
-python make_icon.py   # regenerates icon.ico and gear.png
-pyinstaller --onefile --windowed --icon=icon.ico --name MoveMinder --add-data "icon.ico;." --add-data "gear.png;." move_minder.py
+python make_icon.py         # regenerates icon.ico and gear.png
+python make_animations.py   # regenerates the exercise animation frames
+pyinstaller --onefile --windowed --icon=icon.ico --name MoveMinder ^
+  --add-data "icon.ico;." --add-data "gear.png;." ^
+  --add-data "anim_squats_0.png;." --add-data "anim_squats_1.png;." ^
+  --add-data "anim_pushups_0.png;." --add-data "anim_pushups_1.png;." ^
+  --add-data "anim_situps_0.png;." --add-data "anim_situps_1.png;." ^
+  --add-data "anim_burpees_0.png;." --add-data "anim_burpees_1.png;." ^
+  --add-data "anim_jumping_jacks_0.png;." --add-data "anim_jumping_jacks_1.png;." ^
+  move_minder.py
 ```
 
 The built exe will be in `dist/MoveMinder.exe`.

@@ -18,7 +18,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -283,6 +283,10 @@ class MoveMinderApp:
         self.pending_update_name = None
         self.current_day = today_key()
         self.current_session = []
+        self.anim_images = self.load_anim_images()
+        self.banner_anim_rows = []
+        self.banner_anim_index = 0
+        self.banner_anim_after_id = None
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -300,6 +304,18 @@ class MoveMinderApp:
         self.update_stats_label()
         self.update_xp_display()
         self.tick()
+
+    def load_anim_images(self):
+        images = {}
+        for ex in EXERCISES:
+            frames = []
+            for i in (0, 1):
+                try:
+                    frames.append(tk.PhotoImage(file=resource_path(f"anim_{ex['id']}_{i}.png")))
+                except tk.TclError:
+                    frames.append(None)
+            images[ex["id"]] = frames
+        return images
 
     # ---------- main view ----------
 
@@ -873,20 +889,32 @@ class MoveMinderApp:
         screen_w = self.banner.winfo_screenwidth()
         screen_h = self.banner.winfo_screenheight()
         w = 440
-        h = 230 + max(0, len(self.current_session) - 1) * 40
+        h = 260 + max(0, len(self.current_session) - 1) * 74
         x, y = (screen_w - w) // 2, (screen_h - h) // 2
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
+        self.banner_anim_rows = []
+        self.banner_anim_index = 0
         for ex_id, reps in self.current_session:
             exercise = exercise_by_id(ex_id)
+            row = tk.Frame(self.banner, bg=MISS_COLOR)
+            row.pack(pady=(14, 0))
+            frames = self.anim_images.get(ex_id)
+            img_label = tk.Label(row, bg=MISS_COLOR)
+            if frames and frames[0] is not None:
+                img_label.config(image=frames[0])
+            img_label.pack(side="left", padx=(0, 12))
             tk.Label(
-                self.banner, text=f"{reps} {exercise['name'].upper()}!",
-                font=("Candara", 24, "bold"), bg=MISS_COLOR, fg="#ffffff",
-            ).pack(pady=(18, 0))
+                row, text=f"{reps} {exercise['name'].upper()}!",
+                font=("Candara", 22, "bold"), bg=MISS_COLOR, fg="#ffffff",
+            ).pack(side="left")
+            self.banner_anim_rows.append((img_label, ex_id))
         tk.Label(
             self.banner, text="Get up and knock them out.", font=("Candara", 11),
             bg=MISS_COLOR, fg="#ffe4e4",
-        ).pack(pady=(8, 18))
+        ).pack(pady=(10, 18))
+
+        self.cycle_banner_animation()
 
         btn_frame = tk.Frame(self.banner, bg=MISS_COLOR)
         btn_frame.pack()
@@ -902,10 +930,22 @@ class MoveMinderApp:
         self.banner.lift()
         self.banner.focus_force()
 
+    def cycle_banner_animation(self):
+        self.banner_anim_index = 1 - self.banner_anim_index
+        for img_label, ex_id in self.banner_anim_rows:
+            frames = self.anim_images.get(ex_id)
+            if frames and frames[self.banner_anim_index] is not None:
+                img_label.config(image=frames[self.banner_anim_index])
+        self.banner_anim_after_id = self.banner.after(400, self.cycle_banner_animation)
+
     def close_banner(self):
         if self.banner is not None:
+            if self.banner_anim_after_id is not None:
+                self.banner.after_cancel(self.banner_anim_after_id)
+                self.banner_anim_after_id = None
             self.banner.destroy()
             self.banner = None
+            self.banner_anim_rows = []
         if self.state == "reminder_active":
             self.state = "running"
 
