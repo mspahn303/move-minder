@@ -19,7 +19,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.2"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -535,26 +535,26 @@ class MoveMinderApp:
 
         self._section_label(parent, "UPDATES")
         tk.Label(
-            parent, text=f"Version {APP_VERSION}", font=("Candara", 9),
+            parent, text=f"Current: v{APP_VERSION}", font=("Candara", 9),
             bg=CARD_BG, fg=TEXT_SECONDARY,
-        ).pack(anchor="w", pady=(0, 6))
-
-        self.check_updates_btn = flat_button(
-            parent, "Check for Updates", self.on_check_updates,
-            NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, font_size=9, width=18,
-        )
-        self.check_updates_btn.pack(anchor="w")
+        ).pack(anchor="w")
 
         self.update_status_label = tk.Label(
-            parent, text="", font=("Candara", 9), bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260,
-            justify="left",
+            parent, text="Latest: checking...", font=("Candara", 9),
+            bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260, justify="left",
         )
-        self.update_status_label.pack(anchor="w", pady=(6, 0))
+        self.update_status_label.pack(anchor="w", pady=(0, 6))
 
         self.download_btn = flat_button(
-            parent, "Download & Restart", self.on_download_update,
+            parent, "Update", self.on_download_update,
             ACCENT, "#ffffff", font_size=9, width=18,
         )
+
+        self.check_updates_btn = flat_button(
+            parent, "Check Again", self.on_check_updates,
+            NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, font_size=8, width=12,
+        )
+        self.check_updates_btn.pack(anchor="w", pady=(6, 0))
 
     def _section_label(self, parent, text):
         tk.Label(
@@ -565,6 +565,7 @@ class MoveMinderApp:
         self.main_frame.pack_forget()
         self.refresh_week_dashboard()
         self.settings_frame.pack()
+        self.on_check_updates()
 
     def show_main(self):
         self.settings_frame.pack_forget()
@@ -664,7 +665,7 @@ class MoveMinderApp:
     def on_check_updates(self):
         self.check_updates_btn.config(state="disabled")
         self.download_btn.pack_forget()
-        self.update_status_label.config(text="Checking...", fg=TEXT_SECONDARY)
+        self.update_status_label.config(text="Latest: checking...", fg=TEXT_SECONDARY)
         threading.Thread(target=self._check_updates_worker, daemon=True).start()
 
     def _check_updates_worker(self):
@@ -678,34 +679,30 @@ class MoveMinderApp:
     def _check_updates_failed(self):
         self.check_updates_btn.config(state="normal")
         self.update_status_label.config(
-            text="Couldn't check for updates. Try again later.", fg=MISS_COLOR
+            text="Latest: couldn't check for updates.", fg=MISS_COLOR
         )
 
     def _check_updates_done(self, tag, url, asset_name):
         self.check_updates_btn.config(state="normal")
         if not tag:
             self.update_status_label.config(
-                text="Couldn't check for updates. Try again later.", fg=MISS_COLOR
+                text="Latest: couldn't check for updates.", fg=MISS_COLOR
             )
             return
         if is_newer(tag, APP_VERSION):
             if getattr(sys, "frozen", False) and url and asset_name:
                 self.pending_update_url = url
                 self.pending_update_name = asset_name
-                self.update_status_label.config(
-                    text=f"Update available: v{tag}", fg=ACCENT
-                )
-                self.download_btn.pack(anchor="w", pady=(6, 0))
+                self.update_status_label.config(text=f"Latest: v{tag}", fg=ACCENT)
+                self.download_btn.pack(anchor="w", pady=(6, 0), before=self.check_updates_btn)
             else:
                 self.update_status_label.config(
-                    text=f"Update available: v{tag} — run 'git pull' to get it "
+                    text=f"Latest: v{tag} — run 'git pull' to get it "
                          "(auto-update only works in the packaged .exe).",
                     fg=ACCENT,
                 )
         else:
-            self.update_status_label.config(
-                text=f"You're up to date (v{APP_VERSION}).", fg=HIT_COLOR
-            )
+            self.update_status_label.config(text=f"Latest: v{tag} (up to date)", fg=HIT_COLOR)
 
     def on_download_update(self):
         if not self.pending_update_url or not self.pending_update_name:

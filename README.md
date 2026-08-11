@@ -69,10 +69,13 @@ no install, no Python required. Just download and double-click.
   prompt). All-time totals and your level/XP are untouched.
 - **Reset All Stats** — wipes daily history, all-time totals, and level/XP
   back to zero (with a confirmation prompt). Can't be undone.
-- **Check for Updates** — queries this repo's latest GitHub Release. If a newer
-  version exists and you're running the packaged `.exe`, one click downloads it
-  and restarts the app on the new version automatically. Running from source
-  instead just tells you to `git pull`.
+- **Updates** — opening Settings automatically checks this repo's latest
+  GitHub Release and shows both your current version and the latest one. If
+  a newer version exists and you're running the packaged `.exe`, an
+  **Update** button appears — one click downloads it and restarts the app
+  automatically. Running from source instead just tells you to `git pull`.
+  A small **Check Again** button lets you manually re-check anytime,
+  including as a retry if the automatic check couldn't reach GitHub.
 
 ## Building from source
 
