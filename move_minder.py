@@ -18,21 +18,37 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
 DEFAULT_INTERVAL = 60
 
-# "difficulty" isn't consumed anywhere yet -- it's here for the leveling/XP
-# system planned for the next phase, so that work won't need a data migration.
+# "baseline_reps" is the reference rep count each exercise's XP value assumes;
+# actual assigned reps (5-20, randomized per session) scale XP proportionally.
 EXERCISES = [
-    {"id": "squats", "name": "Squats", "reps": 10, "difficulty": "easy"},
-    {"id": "pushups", "name": "Push-ups", "reps": 10, "difficulty": "medium"},
-    {"id": "situps", "name": "Sit-ups", "reps": 10, "difficulty": "easy"},
-    {"id": "burpees", "name": "Burpees", "reps": 10, "difficulty": "hard"},
-    {"id": "jumping_jacks", "name": "Jumping Jacks", "reps": 10, "difficulty": "easy"},
+    {"id": "squats", "name": "Squats", "baseline_reps": 10, "difficulty": "easy"},
+    {"id": "pushups", "name": "Push-ups", "baseline_reps": 10, "difficulty": "medium"},
+    {"id": "situps", "name": "Sit-ups", "baseline_reps": 10, "difficulty": "easy"},
+    {"id": "burpees", "name": "Burpees", "baseline_reps": 10, "difficulty": "hard"},
+    {"id": "jumping_jacks", "name": "Jumping Jacks", "baseline_reps": 10, "difficulty": "easy"},
 ]
+
+SESSION_MIN_REPS_PER_EXERCISE = 5
+SESSION_MAX_TOTAL_REPS = 20
+
+# Base XP per difficulty tier, and how much it decays per level toward a floor
+# (as a fraction of base). Easy decays fastest, hard barely decays -- the pull
+# toward harder exercises as you level up.
+XP_CURVE = {
+    "easy": {"base": 10, "decay_per_level": 0.08, "floor_fraction": 0.2},
+    "medium": {"base": 15, "decay_per_level": 0.04, "floor_fraction": 0.4},
+    "hard": {"base": 25, "decay_per_level": 0.015, "floor_fraction": 0.7},
+}
+
+LEVEL_XP_BASE = 100
+LEVEL_XP_EXPONENT = 1.3
+XP_BAR_WIDTH = 248
 
 
 def exercise_by_id(ex_id):
@@ -46,6 +62,51 @@ def enabled_exercise_ids(stats):
     enabled = stats["settings"].get("exercise_enabled", {})
     ids = [ex["id"] for ex in EXERCISES if enabled.get(ex["id"], True)]
     return ids if ids else [ex["id"] for ex in EXERCISES]
+
+
+def xp_required_for_level(level):
+    return round(LEVEL_XP_BASE * (level ** LEVEL_XP_EXPONENT))
+
+
+def level_from_total_xp(total_xp):
+    level = 1
+    remaining = total_xp
+    while remaining >= xp_required_for_level(level):
+        remaining -= xp_required_for_level(level)
+        level += 1
+    return level, remaining, xp_required_for_level(level)
+
+
+def xp_value(exercise, level, reps):
+    curve = XP_CURVE[exercise["difficulty"]]
+    multiplier = max(curve["floor_fraction"], 1 - curve["decay_per_level"] * (level - 1))
+    return curve["base"] * multiplier * (reps / exercise["baseline_reps"])
+
+
+def session_xp(session, level):
+    return round(sum(xp_value(exercise_by_id(ex_id), level, reps) for ex_id, reps in session))
+
+
+def build_session(stats, previous_session):
+    ids = enabled_exercise_ids(stats)
+    size = random.choice([1, 2]) if len(ids) >= 2 else 1
+
+    prev_ids = {ex_id for ex_id, _ in (previous_session or [])}
+    pool = [i for i in ids if i not in prev_ids]
+    if len(pool) < size:
+        pool = ids
+    chosen = random.sample(pool, size) if len(pool) >= size else random.sample(ids, size)
+
+    total_reps = random.randint(SESSION_MIN_REPS_PER_EXERCISE * size, SESSION_MAX_TOTAL_REPS)
+    if size == 1:
+        reps_list = [total_reps]
+    else:
+        first = random.randint(
+            SESSION_MIN_REPS_PER_EXERCISE, total_reps - SESSION_MIN_REPS_PER_EXERCISE
+        )
+        reps_list = [first, total_reps - first]
+
+    return list(zip(chosen, reps_list))
 
 BG = "#f4f5f7"
 CARD_BG = "#ffffff"
@@ -100,6 +161,8 @@ def load_stats():
     exercise_enabled = settings.setdefault("exercise_enabled", {})
     for ex in EXERCISES:
         exercise_enabled.setdefault(ex["id"], True)
+    gamification = data.setdefault("gamification", {})
+    gamification.setdefault("total_xp", 0)
     return data
 
 
@@ -219,7 +282,7 @@ class MoveMinderApp:
         self.pending_update_url = None
         self.pending_update_name = None
         self.current_day = today_key()
-        self.current_exercise = None
+        self.current_session = []
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -235,6 +298,7 @@ class MoveMinderApp:
         self.main_frame.pack()
 
         self.update_stats_label()
+        self.update_xp_display()
         self.tick()
 
     # ---------- main view ----------
@@ -286,6 +350,25 @@ class MoveMinderApp:
             btn.pack(side="left", padx=3)
             self.interval_buttons[minutes] = btn
         self.refresh_interval_buttons()
+
+        level_wrap = tk.Frame(parent, bg=CARD_BG)
+        level_wrap.pack(fill="x", pady=(0, 10))
+
+        self.level_label = tk.Label(
+            level_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=ACCENT,
+        )
+        self.level_label.pack(anchor="w")
+
+        self.xp_bar_bg = tk.Frame(level_wrap, bg=NEUTRAL_BTN_BG, height=8, width=XP_BAR_WIDTH)
+        self.xp_bar_bg.pack(anchor="w", pady=(4, 2))
+        self.xp_bar_bg.pack_propagate(False)
+        self.xp_bar_fill = tk.Frame(self.xp_bar_bg, bg=ACCENT, height=8, width=0)
+        self.xp_bar_fill.place(x=0, y=0)
+
+        self.xp_label = tk.Label(
+            level_wrap, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+        )
+        self.xp_label.pack(anchor="w")
 
         stats_wrap = tk.Frame(parent, bg=CARD_BG)
         stats_wrap.pack(fill="x", pady=(0, 10))
@@ -665,15 +748,25 @@ class MoveMinderApp:
         day_entry.setdefault("by_exercise", {})
         day_entry[kind] += 1
 
-        ex_id = self.current_exercise or EXERCISES[0]["id"]
-        day_ex = day_entry["by_exercise"].setdefault(ex_id, {"hits": 0, "misses": 0})
-        day_ex[kind] += 1
+        session = self.current_session or [(EXERCISES[0]["id"], EXERCISES[0]["baseline_reps"])]
+        for ex_id, reps in session:
+            day_ex = day_entry["by_exercise"].setdefault(ex_id, {"hits": 0, "misses": 0})
+            day_ex[kind] += 1
+            all_time_ex = self.stats["all_time"]["by_exercise"].setdefault(
+                ex_id, {"hits": 0, "misses": 0}
+            )
+            all_time_ex[kind] += 1
 
         self.stats["all_time"][kind] += 1
-        all_time_ex = self.stats["all_time"]["by_exercise"].setdefault(
-            ex_id, {"hits": 0, "misses": 0}
-        )
-        all_time_ex[kind] += 1
+
+        if kind == "hits":
+            level_before, _, _ = level_from_total_xp(self.stats["gamification"]["total_xp"])
+            gained = session_xp(session, level_before)
+            self.stats["gamification"]["total_xp"] += gained
+            level_after, _, _ = level_from_total_xp(self.stats["gamification"]["total_xp"])
+            self.update_xp_display()
+            if level_after > level_before:
+                self.show_level_up_popup(level_after)
 
         save_stats(self.stats)
         self.update_stats_label()
@@ -687,6 +780,38 @@ class MoveMinderApp:
         self.all_time_label.config(
             text=f"All-time: {all_time['hits']} hit / {all_time['misses']} miss"
         )
+
+    def update_xp_display(self):
+        level, xp_into_level, xp_needed = level_from_total_xp(
+            self.stats["gamification"]["total_xp"]
+        )
+        self.level_label.config(text=f"Level {level}")
+        fraction = min(1.0, xp_into_level / xp_needed) if xp_needed else 1.0
+        self.xp_bar_fill.config(width=int(XP_BAR_WIDTH * fraction))
+        self.xp_label.config(text=f"{xp_into_level} / {xp_needed} XP")
+
+    def show_level_up_popup(self, level):
+        popup = tk.Toplevel(self.root)
+        popup.overrideredirect(True)
+        popup.configure(bg=HIT_COLOR)
+        popup.attributes("-topmost", True)
+
+        w, h = 260, 90
+        screen_w = popup.winfo_screenwidth()
+        screen_h = popup.winfo_screenheight()
+        x, y = (screen_w - w) // 2, (screen_h - h) // 2
+        popup.geometry(f"{w}x{h}+{x}+{y}")
+
+        tk.Label(
+            popup, text="LEVEL UP!", font=("Candara", 16, "bold"),
+            bg=HIT_COLOR, fg="#ffffff",
+        ).pack(pady=(16, 2))
+        tk.Label(
+            popup, text=f"You're now Level {level}", font=("Candara", 11),
+            bg=HIT_COLOR, fg="#e7ffe9",
+        ).pack()
+
+        popup.after(2200, popup.destroy)
 
     # ---------- main loop ----------
 
@@ -726,20 +851,14 @@ class MoveMinderApp:
 
         self.root.after(1000, self.tick)
 
-    def pick_exercise(self):
-        ids = enabled_exercise_ids(self.stats)
-        choices = [i for i in ids if i != self.current_exercise] if len(ids) > 1 else ids
-        self.current_exercise = random.choice(choices)
-
     def fire_reminder(self):
         self.state = "reminder_active"
         self.next_fire = datetime.now() + self.active_interval
-        self.pick_exercise()
+        self.current_session = build_session(self.stats, self.current_session)
         beep()
         self.open_banner()
 
     def open_banner(self):
-        exercise = exercise_by_id(self.current_exercise)
         self.banner = tk.Toplevel(self.root)
         self.banner.title("Move time!")
         self.banner.configure(bg=MISS_COLOR)
@@ -753,18 +872,21 @@ class MoveMinderApp:
 
         screen_w = self.banner.winfo_screenwidth()
         screen_h = self.banner.winfo_screenheight()
-        w, h = 440, 230
+        w = 440
+        h = 230 + max(0, len(self.current_session) - 1) * 40
         x, y = (screen_w - w) // 2, (screen_h - h) // 2
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
-        tk.Label(
-            self.banner, text=f"{exercise['reps']} {exercise['name'].upper()}!",
-            font=("Candara", 24, "bold"), bg=MISS_COLOR, fg="#ffffff",
-        ).pack(pady=(28, 8))
+        for ex_id, reps in self.current_session:
+            exercise = exercise_by_id(ex_id)
+            tk.Label(
+                self.banner, text=f"{reps} {exercise['name'].upper()}!",
+                font=("Candara", 24, "bold"), bg=MISS_COLOR, fg="#ffffff",
+            ).pack(pady=(18, 0))
         tk.Label(
             self.banner, text="Get up and knock them out.", font=("Candara", 11),
             bg=MISS_COLOR, fg="#ffe4e4",
-        ).pack(pady=(0, 22))
+        ).pack(pady=(8, 18))
 
         btn_frame = tk.Frame(self.banner, bg=MISS_COLOR)
         btn_frame.pack()

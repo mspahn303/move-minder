@@ -17,14 +17,25 @@ no install, no Python required. Just download and double-click.
 
 - Pick a reminder interval: **15, 30, 45, or 60 minutes**.
 - Press **Start** to begin the countdown.
-- When it hits zero, a banner pops up with a beep showing one randomly picked
-  exercise — **10 SQUATS!**, **10 PUSH-UPS!**, **10 SIT-UPS!**, **10 BURPEES!**,
-  or **10 JUMPING JACKS!** — never the same one twice in a row.
-  - **Doing it** — logs a hit and restarts the countdown.
-  - **Skip** — logs a miss, dismisses the banner, restarts the countdown.
+- When it hits zero, a banner pops up with a beep showing a randomly generated
+  session — one exercise most of the time, sometimes two back-to-back (e.g.
+  **9 SQUATS!** + **8 SIT-UPS!**) — picked from Squats, Push-ups, Sit-ups,
+  Burpees, and Jumping Jacks, never repeating the same exercise set twice in a
+  row. Reps are randomized too: each exercise gets at least 5, with the whole
+  session capped at 20 reps total.
+  - **Doing it** — logs a hit for the whole session, awards XP, and restarts
+    the countdown.
+  - **Skip** — logs a miss for the whole session, dismisses the banner, and
+    restarts the countdown.
   - Ignore it completely and it auto-logs as a miss once the next interval starts.
 - **Sleep** on the main window pauses the whole cycle (e.g. overnight) without
   logging a miss.
+- **Level & XP bar** on the main window tracks your progress. Harder exercises
+  (burpees > push-ups > squats/sit-ups/jumping jacks) are worth more XP, and as
+  you level up, easy exercises' XP value decays toward a floor much faster than
+  hard ones do — so the higher your level, the more the game nudges you toward
+  tougher exercises to keep progressing at a good pace. Leveling up triggers a
+  brief celebration popup.
 - **"I'm in a meeting"** checkbox suppresses reminders while checked (no miss
   logged) — when you uncheck it, any reminder that was due fires immediately,
   then the timer restarts fresh from that moment.
