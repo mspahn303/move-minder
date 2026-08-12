@@ -23,21 +23,24 @@ no install, no Python required. Just download and double-click.
   Burpees, and Jumping Jacks, never repeating the same exercise set twice in a
   row. Single-exercise sessions get a random rep count of 10, 15, or 20; combo
   sessions are always split evenly at 10 reps each.
-  - **Doing it** — logs a hit for the whole session, awards XP, and restarts
-    the countdown.
-  - **Skip** — logs a miss for the whole session, dismisses the banner, and
-    restarts the countdown.
-  - Ignore it completely and it auto-logs as a miss once the next interval starts.
+  - **Doing it** — logs a hit for the whole session, awards XP (shown as a
+    floating **+XP** on the banner), and restarts the countdown.
+  - **Skip** — logs a miss for the whole session, costs XP (shown as a
+    floating **−XP**), dismisses the banner, and restarts the countdown.
+  - Ignore it completely and it auto-logs as a miss (same XP cost, no
+    animation) once the next interval starts.
   - Each exercise in the banner has a small looping animation next to it, so
     you can see the motion instead of just reading the name.
 - **Sleep** on the main window pauses the whole cycle (e.g. overnight) without
   logging a miss.
 - **Level & XP bar** on the main window tracks your progress. Harder exercises
-  (burpees > push-ups > squats/sit-ups/jumping jacks) are worth more XP, and as
-  you level up, easy exercises' XP value decays toward a floor much faster than
-  hard ones do — so the higher your level, the more the game nudges you toward
-  tougher exercises to keep progressing at a good pace. Leveling up triggers a
-  brief celebration popup.
+  (burpees > push-ups > squats/sit-ups/jumping jacks) are worth more XP to
+  begin with, and as you level up, XP value grows further — hard exercises
+  grow fastest and plateau highest, so they stay worth doing longest. XP
+  required per level keeps rising with no cap, so leveling still naturally
+  slows down over time even though rewards never shrink. Skipping or missing
+  costs a slice of your current level's required XP (never below zero total).
+  Leveling up triggers a brief celebration popup.
 - **"I'm in a meeting"** checkbox (optional, see Settings) suppresses
   reminders while checked (no miss logged) — when you uncheck it, any
   reminder that was due fires immediately, then the timer restarts fresh
@@ -54,6 +57,8 @@ no install, no Python required. Just download and double-click.
 ## Settings (⚙)
 
 - **Always on top** — toggle whether the window stays above other windows.
+- **24-hour time** — toggle between 24-hour and 12-hour (AM/PM) clock display
+  on the main window.
 - **Auto-detect Teams calls (beta)** — when enabled, the app checks whether
   Teams currently has your microphone open and automatically suppresses
   reminders during meetings. It's a heuristic (no Teams login or API

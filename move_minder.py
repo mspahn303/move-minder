@@ -19,7 +19,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.4.3"
+APP_VERSION = "2.5.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -41,14 +41,20 @@ EXERCISES = [
 SESSION_REP_CHOICES = [10, 15, 20]
 SESSION_COMBO_REPS_EACH = 10
 
-# Base XP per difficulty tier, and how much it decays per level toward a floor
-# (as a fraction of base). Easy decays fastest, hard barely decays -- the pull
-# toward harder exercises as you level up.
+# Base XP per difficulty tier, and how much it GROWS per level toward a cap
+# (as a multiplier of base). Hard grows fastest and caps highest, so harder
+# exercises keep paying off longer -- but XP required per level (below) keeps
+# growing uncapped, so leveling still naturally slows down late-game once your
+# capped reward can't keep pace with the ever-rising requirement.
 XP_CURVE = {
-    "easy": {"base": 10, "decay_per_level": 0.08, "floor_fraction": 0.2},
-    "medium": {"base": 15, "decay_per_level": 0.04, "floor_fraction": 0.4},
-    "hard": {"base": 25, "decay_per_level": 0.015, "floor_fraction": 0.7},
+    "easy": {"base": 10, "growth_per_level": 0.04, "cap_multiplier": 2.0},
+    "medium": {"base": 15, "growth_per_level": 0.06, "cap_multiplier": 3.0},
+    "hard": {"base": 25, "growth_per_level": 0.10, "cap_multiplier": 5.0},
 }
+
+# Skip/auto-miss costs this fraction of the XP required for your current
+# level, floored so total XP never goes negative.
+XP_MISS_PENALTY_FRACTION = 0.10
 
 LEVEL_XP_BASE = 100
 LEVEL_XP_EXPONENT = 1.3
@@ -83,7 +89,7 @@ def level_from_total_xp(total_xp):
 
 def xp_value(exercise, level, reps):
     curve = XP_CURVE[exercise["difficulty"]]
-    multiplier = max(curve["floor_fraction"], 1 - curve["decay_per_level"] * (level - 1))
+    multiplier = min(curve["cap_multiplier"], 1 + curve["growth_per_level"] * (level - 1))
     return curve["base"] * multiplier * (reps / exercise["baseline_reps"])
 
 
@@ -159,6 +165,7 @@ def load_stats():
     settings.setdefault("always_on_top", True)
     settings.setdefault("auto_detect_teams", False)
     settings.setdefault("show_meeting_checkbox", True)
+    settings.setdefault("time_format_24h", True)
     exercise_enabled = settings.setdefault("exercise_enabled", {})
     for ex in EXERCISES:
         exercise_enabled.setdefault(ex["id"], True)
@@ -222,6 +229,16 @@ def parse_version(v):
 
 def is_newer(latest, current):
     return parse_version(latest) > parse_version(current)
+
+
+def lerp_color(c1, c2, t):
+    c1, c2 = c1.lstrip("#"), c2.lstrip("#")
+    r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
+    r2, g2, b2 = int(c2[0:2], 16), int(c2[2:4], 16), int(c2[4:6], 16)
+    r = round(r1 + (r2 - r1) * t)
+    g = round(g1 + (g2 - g1) * t)
+    b = round(b1 + (b2 - b1) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def teams_mic_active():
@@ -289,6 +306,7 @@ class MoveMinderApp:
         self.banner_anim_index = 0
         self.banner_anim_after_id = None
         self.pre_impromptu_state = None
+        self.banner_height = None
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
@@ -438,6 +456,11 @@ class MoveMinderApp:
         )
         self.impromptu_btn.pack(fill="x", pady=(8, 0))
 
+        tk.Label(
+            parent, text=f"v{APP_VERSION}", font=("Candara", 7),
+            bg=CARD_BG, fg=TEXT_SECONDARY,
+        ).pack(pady=(10, 0))
+
     # ---------- settings view ----------
 
     def build_settings_view(self):
@@ -462,6 +485,16 @@ class MoveMinderApp:
         tk.Checkbutton(
             parent, text="Always on top", variable=self.always_on_top_var,
             command=self.on_always_on_top_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
+            activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
+            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+        ).pack(anchor="w")
+
+        self.time_format_24h_var = tk.BooleanVar(
+            value=self.stats["settings"].get("time_format_24h", True)
+        )
+        tk.Checkbutton(
+            parent, text="24-hour time", variable=self.time_format_24h_var,
+            command=self.on_time_format_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
             selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
         ).pack(anchor="w")
@@ -607,6 +640,10 @@ class MoveMinderApp:
         self.stats["settings"]["always_on_top"] = value
         save_stats(self.stats)
         self.root.attributes("-topmost", value)
+
+    def on_time_format_changed(self):
+        self.stats["settings"]["time_format_24h"] = self.time_format_24h_var.get()
+        save_stats(self.stats)
 
     def on_auto_detect_changed(self):
         self.stats["settings"]["auto_detect_teams"] = self.auto_detect_var.get()
@@ -851,17 +888,27 @@ class MoveMinderApp:
 
         self.stats["all_time"][kind] += 1
 
+        xp_delta = 0
         if kind == "hits":
             level_before, _, _ = level_from_total_xp(self.stats["gamification"]["total_xp"])
             gained = session_xp(session, level_before)
             self.stats["gamification"]["total_xp"] += gained
+            xp_delta = gained
             level_after, _, _ = level_from_total_xp(self.stats["gamification"]["total_xp"])
             self.update_xp_display()
             if level_after > level_before:
                 self.show_level_up_popup(level_after)
+        elif kind == "misses":
+            level_now, _, _ = level_from_total_xp(self.stats["gamification"]["total_xp"])
+            penalty = round(XP_MISS_PENALTY_FRACTION * xp_required_for_level(level_now))
+            before_xp = self.stats["gamification"]["total_xp"]
+            self.stats["gamification"]["total_xp"] = max(0, before_xp - penalty)
+            xp_delta = self.stats["gamification"]["total_xp"] - before_xp
+            self.update_xp_display()
 
         save_stats(self.stats)
         self.update_stats_label()
+        return xp_delta
 
     def update_stats_label(self):
         day = today_key()
@@ -908,7 +955,8 @@ class MoveMinderApp:
     # ---------- main loop ----------
 
     def tick(self):
-        self.clock_label.config(text=datetime.now().strftime("%H:%M:%S"))
+        clock_fmt = "%H:%M:%S" if self.time_format_24h_var.get() else "%I:%M:%S %p"
+        self.clock_label.config(text=datetime.now().strftime(clock_fmt))
 
         day = today_key()
         if day != self.current_day:
@@ -980,6 +1028,7 @@ class MoveMinderApp:
         screen_h = self.banner.winfo_screenheight()
         w = 440
         h = 260 + max(0, len(self.current_session) - 1) * 74
+        self.banner_height = h
         x, y = (screen_w - w) // 2, (screen_h - h) // 2
         self.banner.geometry(f"{w}x{h}+{x}+{y}")
 
@@ -1009,13 +1058,15 @@ class MoveMinderApp:
         btn_frame = tk.Frame(self.banner, bg=MISS_COLOR)
         btn_frame.pack()
 
-        flat_button(
+        self.doing_it_btn = flat_button(
             btn_frame, "Doing it", self.on_doing_it, "#ffffff", HIT_COLOR, width=12,
-        ).grid(row=0, column=0, padx=10)
+        )
+        self.doing_it_btn.grid(row=0, column=0, padx=10)
 
-        flat_button(
+        self.skip_btn = flat_button(
             btn_frame, "Skip", self.on_banner_skip, "#7f1d1d", "#ffffff", width=12,
-        ).grid(row=0, column=1, padx=10)
+        )
+        self.skip_btn.grid(row=0, column=1, padx=10)
 
         self.banner.lift()
         self.banner.focus_force()
@@ -1045,12 +1096,48 @@ class MoveMinderApp:
         self.refresh_interval_buttons()
 
     def on_doing_it(self):
-        self.log_result("hits")
-        self.close_banner()
+        self.doing_it_btn.config(state="disabled")
+        self.skip_btn.config(state="disabled")
+        xp_delta = self.log_result("hits")
+        if xp_delta and self.banner is not None:
+            self.show_xp_change_animation(xp_delta)
+        else:
+            self.close_banner()
 
     def on_banner_skip(self):
-        self.log_result("misses")
-        self.close_banner()
+        self.doing_it_btn.config(state="disabled")
+        self.skip_btn.config(state="disabled")
+        xp_delta = self.log_result("misses")
+        if xp_delta and self.banner is not None:
+            self.show_xp_change_animation(xp_delta)
+        else:
+            self.close_banner()
+
+    def show_xp_change_animation(self, amount):
+        is_gain = amount > 0
+        text = f"+{amount} XP" if is_gain else f"{amount} XP"
+        color = "#ffe066" if is_gain else "#ffffff"
+        label = tk.Label(
+            self.banner, text=text, font=("Candara", 16, "bold"),
+            bg=MISS_COLOR, fg=color,
+        )
+        start_y = max(60, (self.banner_height or 260) - 70)
+        label.place(relx=0.5, y=start_y, anchor="n")
+        self._animate_xp_change_label(label, 0, 20, start_y, color)
+
+    def _animate_xp_change_label(self, label, frame, total_frames, start_y, base_color):
+        if self.banner is None or not self.banner.winfo_exists():
+            return
+        t = frame / total_frames
+        y = start_y - int(40 * t)
+        label.place(relx=0.5, y=y, anchor="n")
+        label.config(fg=lerp_color(base_color, MISS_COLOR, t))
+        if frame < total_frames:
+            self.banner.after(
+                40, self._animate_xp_change_label, label, frame + 1, total_frames, start_y, base_color
+            )
+        else:
+            self.close_banner()
 
     def on_close(self):
         save_stats(self.stats)
