@@ -19,7 +19,7 @@ try:
 except ImportError:
     winreg = None
 
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 GITHUB_REPO = "mspahn303/move-minder"
 
 INTERVAL_OPTIONS = [15, 30, 45, 60]
@@ -114,17 +114,64 @@ def build_session(stats, previous_session):
 
     return list(zip(chosen, reps_list))
 
-BG = "#f4f5f7"
-CARD_BG = "#ffffff"
-TEXT_PRIMARY = "#1f2430"
-TEXT_SECONDARY = "#6b7280"
-ACCENT = "#2563eb"
-ACCENT_DARK = "#1d4ed8"
-HIT_COLOR = "#16a34a"
-MISS_COLOR = "#dc2626"
-NEUTRAL_BTN_BG = "#e5e7eb"
-NEUTRAL_BTN_FG = "#374151"
-DISABLED_FG = "#9ca3af"
+# Each theme provides every color plus button chrome (relief/border) and the
+# font family. Widgets throughout the file reference the bare global names
+# below (BG, CARD_BG, ...) rather than THEMES directly, so apply_theme() just
+# reassigns those globals and a UI rebuild picks up the new values everywhere
+# for free -- no need to thread a theme object through every widget call.
+THEMES = {
+    "light": {
+        "BG": "#f4f5f7", "CARD_BG": "#ffffff", "TEXT_PRIMARY": "#1f2430",
+        "TEXT_SECONDARY": "#6b7280", "ACCENT": "#2563eb", "ACCENT_DARK": "#1d4ed8",
+        "HIT_COLOR": "#16a34a", "MISS_COLOR": "#dc2626", "NEUTRAL_BTN_BG": "#e5e7eb",
+        "NEUTRAL_BTN_FG": "#374151", "DISABLED_FG": "#9ca3af",
+        "BUTTON_RELIEF": "flat", "BUTTON_BD": 0, "FONT_FAMILY": "Candara",
+    },
+    "dark": {
+        "BG": "#0f1115", "CARD_BG": "#1a1d24", "TEXT_PRIMARY": "#f1f2f4",
+        "TEXT_SECONDARY": "#9aa0ab", "ACCENT": "#5b8def", "ACCENT_DARK": "#3f6fd1",
+        "HIT_COLOR": "#4ade80", "MISS_COLOR": "#f87171", "NEUTRAL_BTN_BG": "#2a2e37",
+        "NEUTRAL_BTN_FG": "#e5e7eb", "DISABLED_FG": "#6b7280",
+        "BUTTON_RELIEF": "flat", "BUTTON_BD": 0, "FONT_FAMILY": "Candara",
+    },
+    "nostalgia": {
+        "BG": "#3a6ea5", "CARD_BG": "#ece9d8", "TEXT_PRIMARY": "#000000",
+        "TEXT_SECONDARY": "#4a4a4a", "ACCENT": "#0a5fd0", "ACCENT_DARK": "#003c90",
+        "HIT_COLOR": "#3fae2a", "MISS_COLOR": "#c1121c", "NEUTRAL_BTN_BG": "#ece9d8",
+        "NEUTRAL_BTN_FG": "#000000", "DISABLED_FG": "#808080",
+        "BUTTON_RELIEF": "raised", "BUTTON_BD": 2, "FONT_FAMILY": "Tahoma",
+    },
+}
+THEME_NAMES = ["light", "dark", "nostalgia"]
+THEME_LABELS = {"light": "Light", "dark": "Dark", "nostalgia": "Nostalgia"}
+
+BG = CARD_BG = TEXT_PRIMARY = TEXT_SECONDARY = ACCENT = ACCENT_DARK = None
+HIT_COLOR = MISS_COLOR = NEUTRAL_BTN_BG = NEUTRAL_BTN_FG = DISABLED_FG = None
+BUTTON_RELIEF = BUTTON_BD = FONT_FAMILY = None
+
+
+def apply_theme(name):
+    global BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT, ACCENT_DARK
+    global HIT_COLOR, MISS_COLOR, NEUTRAL_BTN_BG, NEUTRAL_BTN_FG, DISABLED_FG
+    global BUTTON_RELIEF, BUTTON_BD, FONT_FAMILY
+    theme = THEMES.get(name, THEMES["light"])
+    BG = theme["BG"]
+    CARD_BG = theme["CARD_BG"]
+    TEXT_PRIMARY = theme["TEXT_PRIMARY"]
+    TEXT_SECONDARY = theme["TEXT_SECONDARY"]
+    ACCENT = theme["ACCENT"]
+    ACCENT_DARK = theme["ACCENT_DARK"]
+    HIT_COLOR = theme["HIT_COLOR"]
+    MISS_COLOR = theme["MISS_COLOR"]
+    NEUTRAL_BTN_BG = theme["NEUTRAL_BTN_BG"]
+    NEUTRAL_BTN_FG = theme["NEUTRAL_BTN_FG"]
+    DISABLED_FG = theme["DISABLED_FG"]
+    BUTTON_RELIEF = theme["BUTTON_RELIEF"]
+    BUTTON_BD = theme["BUTTON_BD"]
+    FONT_FAMILY = theme["FONT_FAMILY"]
+
+
+apply_theme("light")
 
 
 def data_dir():
@@ -163,9 +210,10 @@ def load_stats():
     settings = data.setdefault("settings", {})
     settings.setdefault("interval_minutes", DEFAULT_INTERVAL)
     settings.setdefault("always_on_top", True)
-    settings.setdefault("auto_detect_teams", False)
-    settings.setdefault("show_meeting_checkbox", True)
-    settings.setdefault("time_format_24h", True)
+    settings.setdefault("auto_detect_teams", True)
+    settings.setdefault("show_meeting_checkbox", False)
+    settings.setdefault("time_format_24h", False)
+    settings.setdefault("theme", "light")
     exercise_enabled = settings.setdefault("exercise_enabled", {})
     for ex in EXERCISES:
         exercise_enabled.setdefault(ex["id"], True)
@@ -194,8 +242,8 @@ def flat_button(parent, text, command, bg, fg, font_size=11, bold=True, width=10
         parent, text=text, command=command, bg=bg, fg=fg,
         activebackground=bg, activeforeground=fg,
         disabledforeground=DISABLED_FG,
-        font=("Candara", font_size, "bold" if bold else "normal"),
-        relief="flat", bd=0, width=width, padx=6, pady=8,
+        font=(FONT_FAMILY, font_size, "bold" if bold else "normal"),
+        relief=BUTTON_RELIEF, bd=BUTTON_BD, width=width, padx=6, pady=8,
         cursor="hand2", state=state,
     )
 
@@ -283,7 +331,6 @@ class MoveMinderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Move Minder")
-        self.root.configure(bg=BG)
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         try:
@@ -292,6 +339,9 @@ class MoveMinderApp:
             pass
 
         self.stats = load_stats()
+        apply_theme(self.stats["settings"].get("theme", "light"))
+        self.root.configure(bg=BG)
+
         self.state = "stopped"  # stopped | running | reminder_active
         self.next_fire = None
         self.banner = None
@@ -310,7 +360,14 @@ class MoveMinderApp:
 
         self.root.attributes("-topmost", self.stats["settings"].get("always_on_top", True))
 
-        self.card = tk.Frame(root, bg=CARD_BG, padx=24, pady=20)
+        self.build_ui()
+
+        self.update_stats_label()
+        self.update_xp_display()
+        self.tick()
+
+    def build_ui(self):
+        self.card = tk.Frame(self.root, bg=CARD_BG, padx=24, pady=20)
         self.card.pack(padx=14, pady=14)
 
         self.main_frame = tk.Frame(self.card, bg=CARD_BG)
@@ -321,9 +378,29 @@ class MoveMinderApp:
 
         self.main_frame.pack()
 
+    def sync_run_state_buttons(self):
+        if self.state == "stopped":
+            self.start_btn.config(state="normal")
+            self.sleep_btn.config(state="disabled")
+        else:
+            self.start_btn.config(state="disabled")
+            self.sleep_btn.config(state="normal")
+        self.impromptu_btn.config(state="disabled" if self.state == "reminder_active" else "normal")
+        self.refresh_interval_buttons()
+
+    def apply_theme_and_rebuild(self, name):
+        apply_theme(name)
+        self.stats["settings"]["theme"] = name
+        save_stats(self.stats)
+        was_settings = self.settings_frame.winfo_ismapped() == 1
+        self.card.destroy()
+        self.root.configure(bg=BG)
+        self.build_ui()
+        self.sync_run_state_buttons()
         self.update_stats_label()
         self.update_xp_display()
-        self.tick()
+        if was_settings:
+            self.show_settings()
 
     def load_anim_images(self):
         images = {}
@@ -345,7 +422,7 @@ class MoveMinderApp:
         header = tk.Frame(parent, bg=CARD_BG)
         header.pack(fill="x")
         tk.Label(
-            header, text="MOVE MINDER", font=("Candara", 11, "bold"),
+            header, text="MOVE MINDER", font=(FONT_FAMILY, 11, "bold"),
             bg=CARD_BG, fg=ACCENT,
         ).pack(side="left")
         self.gear_icon = tk.PhotoImage(file=resource_path("gear.png"))
@@ -355,19 +432,19 @@ class MoveMinderApp:
         ).pack(side="right")
 
         self.clock_label = tk.Label(
-            parent, font=("Candara", 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+            parent, font=(FONT_FAMILY, 34, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
         )
         self.clock_label.pack(pady=(4, 2))
 
         self.countdown_label = tk.Label(
-            parent, font=("Candara", 12), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=(FONT_FAMILY, 12), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.countdown_label.pack(pady=(0, 14))
 
         interval_wrap = tk.Frame(parent, bg=CARD_BG)
         interval_wrap.pack(fill="x", pady=(0, 14))
         tk.Label(
-            interval_wrap, text="INTERVAL", font=("Candara", 8, "bold"),
+            interval_wrap, text="INTERVAL", font=(FONT_FAMILY, 8, "bold"),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 4))
 
@@ -379,7 +456,7 @@ class MoveMinderApp:
         self.interval_buttons = {}
         for minutes in INTERVAL_OPTIONS:
             btn = tk.Button(
-                interval_frame, text=f"{minutes}m", font=("Candara", 9, "bold"),
+                interval_frame, text=f"{minutes}m", font=(FONT_FAMILY, 9, "bold"),
                 relief="flat", bd=0, width=5, padx=2, pady=6, cursor="hand2",
                 command=lambda m=minutes: self.select_interval(m),
             )
@@ -391,7 +468,7 @@ class MoveMinderApp:
         level_wrap.pack(fill="x", pady=(0, 10))
 
         self.level_label = tk.Label(
-            level_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=ACCENT,
+            level_wrap, font=(FONT_FAMILY, 10, "bold"), bg=CARD_BG, fg=ACCENT,
         )
         self.level_label.pack(anchor="w")
 
@@ -402,7 +479,7 @@ class MoveMinderApp:
         self.xp_bar_fill.place(x=0, y=0)
 
         self.xp_label = tk.Label(
-            level_wrap, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            level_wrap, font=(FONT_FAMILY, 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.xp_label.pack(anchor="w")
 
@@ -410,26 +487,26 @@ class MoveMinderApp:
         stats_wrap.pack(fill="x", pady=(0, 10))
 
         self.hits_label = tk.Label(
-            stats_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
+            stats_wrap, font=(FONT_FAMILY, 10, "bold"), bg=CARD_BG, fg=HIT_COLOR,
         )
         self.hits_label.pack(side="left")
 
         self.misses_label = tk.Label(
-            stats_wrap, font=("Candara", 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
+            stats_wrap, font=(FONT_FAMILY, 10, "bold"), bg=CARD_BG, fg=MISS_COLOR,
         )
         self.misses_label.pack(side="left", padx=(14, 0))
 
         self.all_time_label = tk.Label(
-            parent, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=(FONT_FAMILY, 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.all_time_label.pack(anchor="w", pady=(0, 10))
 
-        self.meeting_var = tk.BooleanVar(value=False)
+        self.meeting_var = tk.BooleanVar(value=self.meeting_active)
         self.meeting_checkbox = tk.Checkbutton(
             parent, text="I'm in a meeting", variable=self.meeting_var,
             command=self.on_meeting_checkbox, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Candara", 9), cursor="hand2",
+            selectcolor=CARD_BG, font=(FONT_FAMILY, 9), cursor="hand2",
         )
         if self.stats["settings"].get("show_meeting_checkbox", True):
             self.meeting_checkbox.pack(anchor="w", pady=(0, 14))
@@ -457,7 +534,7 @@ class MoveMinderApp:
         self.impromptu_btn.pack(fill="x", pady=(8, 0))
 
         tk.Label(
-            parent, text=f"v{APP_VERSION}", font=("Candara", 7),
+            parent, text=f"v{APP_VERSION}", font=(FONT_FAMILY, 7),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(pady=(10, 0))
 
@@ -471,11 +548,29 @@ class MoveMinderApp:
         tk.Button(
             header, text="← Back", command=self.show_main, bg=CARD_BG, fg=ACCENT,
             activebackground=CARD_BG, activeforeground=ACCENT_DARK, relief="flat", bd=0,
-            font=("Candara", 10, "bold"), cursor="hand2",
+            font=(FONT_FAMILY, 10, "bold"), cursor="hand2",
         ).pack(side="left")
         tk.Label(
-            header, text="SETTINGS", font=("Candara", 11, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
+            header, text="SETTINGS", font=(FONT_FAMILY, 11, "bold"), bg=CARD_BG, fg=TEXT_PRIMARY,
         ).pack(side="left", padx=(10, 0))
+
+        self._section_label(parent, "APPEARANCE")
+        theme_frame = tk.Frame(parent, bg=CARD_BG)
+        theme_frame.pack(anchor="w", pady=(0, 14))
+        current_theme = self.stats["settings"].get("theme", "light")
+        self.theme_buttons = {}
+        for name in THEME_NAMES:
+            selected = name == current_theme
+            bg = ACCENT if selected else NEUTRAL_BTN_BG
+            fg = "#ffffff" if selected else NEUTRAL_BTN_FG
+            btn = tk.Button(
+                theme_frame, text=THEME_LABELS[name], font=(FONT_FAMILY, 9, "bold"),
+                bg=bg, fg=fg, activebackground=bg, activeforeground=fg,
+                relief=BUTTON_RELIEF, bd=BUTTON_BD, width=9, padx=2, pady=6, cursor="hand2",
+                command=lambda n=name: self.on_theme_selected(n),
+            )
+            btn.pack(side="left", padx=3)
+            self.theme_buttons[name] = btn
 
         self._section_label(parent, "PREFERENCES")
 
@@ -486,7 +581,7 @@ class MoveMinderApp:
             parent, text="Always on top", variable=self.always_on_top_var,
             command=self.on_always_on_top_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=(FONT_FAMILY, 10), cursor="hand2",
         ).pack(anchor="w")
 
         self.time_format_24h_var = tk.BooleanVar(
@@ -496,7 +591,7 @@ class MoveMinderApp:
             parent, text="24-hour time", variable=self.time_format_24h_var,
             command=self.on_time_format_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=(FONT_FAMILY, 10), cursor="hand2",
         ).pack(anchor="w")
 
         self.auto_detect_var = tk.BooleanVar(
@@ -506,7 +601,7 @@ class MoveMinderApp:
             parent, text="Auto-detect Teams calls (beta)", variable=self.auto_detect_var,
             command=self.on_auto_detect_changed, bg=CARD_BG, fg=TEXT_PRIMARY,
             activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=(FONT_FAMILY, 10), cursor="hand2",
         ).pack(anchor="w")
 
         self.show_meeting_checkbox_var = tk.BooleanVar(
@@ -516,7 +611,7 @@ class MoveMinderApp:
             parent, text="Show \"I'm in a meeting\" checkbox on main window",
             variable=self.show_meeting_checkbox_var, command=self.on_show_meeting_checkbox_changed,
             bg=CARD_BG, fg=TEXT_PRIMARY, activebackground=CARD_BG, activeforeground=TEXT_PRIMARY,
-            selectcolor=CARD_BG, font=("Candara", 10), cursor="hand2",
+            selectcolor=CARD_BG, font=(FONT_FAMILY, 10), cursor="hand2",
         ).pack(anchor="w", pady=(0, 14))
 
         self._section_label(parent, "EXERCISES")
@@ -530,11 +625,11 @@ class MoveMinderApp:
                 command=lambda ex_id=ex["id"]: self.on_exercise_toggle(ex_id),
                 bg=CARD_BG, fg=TEXT_PRIMARY, activebackground=CARD_BG,
                 activeforeground=TEXT_PRIMARY, selectcolor=CARD_BG,
-                font=("Candara", 10), cursor="hand2",
+                font=(FONT_FAMILY, 10), cursor="hand2",
             ).pack(anchor="w")
 
         self.exercise_warning_label = tk.Label(
-            parent, text="", font=("Candara", 8), bg=CARD_BG, fg=MISS_COLOR,
+            parent, text="", font=(FONT_FAMILY, 8), bg=CARD_BG, fg=MISS_COLOR,
         )
         self.exercise_warning_label.pack(anchor="w", pady=(2, 14))
 
@@ -543,7 +638,7 @@ class MoveMinderApp:
         self.week_frame.pack(fill="x", pady=(0, 4))
 
         self.settings_all_time_label = tk.Label(
-            parent, font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, font=(FONT_FAMILY, 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.settings_all_time_label.pack(anchor="w", pady=(0, 14))
 
@@ -562,18 +657,18 @@ class MoveMinderApp:
         ).grid(row=0, column=1, padx=(6, 0))
 
         self.reset_status_label = tk.Label(
-            parent, text="", font=("Candara", 8), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, text="", font=(FONT_FAMILY, 8), bg=CARD_BG, fg=TEXT_SECONDARY,
         )
         self.reset_status_label.pack(anchor="w", pady=(6, 14))
 
         self._section_label(parent, "UPDATES")
         tk.Label(
-            parent, text=f"Current: v{APP_VERSION}", font=("Candara", 9),
+            parent, text=f"Current: v{APP_VERSION}", font=(FONT_FAMILY, 9),
             bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w")
 
         self.update_status_label = tk.Label(
-            parent, text="Latest: checking...", font=("Candara", 9),
+            parent, text="Latest: checking...", font=(FONT_FAMILY, 9),
             bg=CARD_BG, fg=TEXT_SECONDARY, wraplength=260, justify="left",
         )
         self.update_status_label.pack(anchor="w", pady=(0, 6))
@@ -591,7 +686,7 @@ class MoveMinderApp:
 
     def _section_label(self, parent, text):
         tk.Label(
-            parent, text=text, font=("Candara", 8, "bold"), bg=CARD_BG, fg=TEXT_SECONDARY,
+            parent, text=text, font=(FONT_FAMILY, 8, "bold"), bg=CARD_BG, fg=TEXT_SECONDARY,
         ).pack(anchor="w", pady=(0, 4))
 
     def show_settings(self):
@@ -616,15 +711,15 @@ class MoveMinderApp:
             row = tk.Frame(self.week_frame, bg=CARD_BG)
             row.pack(fill="x", pady=1)
             tk.Label(
-                row, text=day.strftime("%a %m/%d"), font=("Candara", 9),
+                row, text=day.strftime("%a %m/%d"), font=(FONT_FAMILY, 9),
                 bg=CARD_BG, fg=TEXT_PRIMARY, width=10, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=f"● {entry['hits']}", font=("Candara", 9, "bold"),
+                row, text=f"● {entry['hits']}", font=(FONT_FAMILY, 9, "bold"),
                 bg=CARD_BG, fg=HIT_COLOR, width=6, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=f"● {entry['misses']}", font=("Candara", 9, "bold"),
+                row, text=f"● {entry['misses']}", font=(FONT_FAMILY, 9, "bold"),
                 bg=CARD_BG, fg=MISS_COLOR, width=6, anchor="w",
             ).pack(side="left")
 
@@ -644,6 +739,11 @@ class MoveMinderApp:
     def on_time_format_changed(self):
         self.stats["settings"]["time_format_24h"] = self.time_format_24h_var.get()
         save_stats(self.stats)
+
+    def on_theme_selected(self, name):
+        if name == self.stats["settings"].get("theme", "light"):
+            return
+        self.apply_theme_and_rebuild(name)
 
     def on_auto_detect_changed(self):
         self.stats["settings"]["auto_detect_teams"] = self.auto_detect_var.get()
@@ -942,11 +1042,11 @@ class MoveMinderApp:
         popup.geometry(f"{w}x{h}+{x}+{y}")
 
         tk.Label(
-            popup, text="LEVEL UP!", font=("Candara", 16, "bold"),
+            popup, text="LEVEL UP!", font=(FONT_FAMILY, 16, "bold"),
             bg=HIT_COLOR, fg="#ffffff",
         ).pack(pady=(16, 2))
         tk.Label(
-            popup, text=f"You're now Level {level}", font=("Candara", 11),
+            popup, text=f"You're now Level {level}", font=(FONT_FAMILY, 11),
             bg=HIT_COLOR, fg="#e7ffe9",
         ).pack()
 
@@ -985,7 +1085,7 @@ class MoveMinderApp:
                 self.close_banner()
                 self.fire_reminder()
             else:
-                self.countdown_label.config(text="Reminder active — respond on the banner!")
+                self.countdown_label.config(text="Ready?")
         else:
             self.countdown_label.config(text="Stopped")
 
@@ -1045,11 +1145,11 @@ class MoveMinderApp:
             img_label.pack(side="left", padx=(0, 12))
             tk.Label(
                 row, text=f"{reps} {exercise['name'].upper()}!",
-                font=("Candara", 22, "bold"), bg=MISS_COLOR, fg="#ffffff",
+                font=(FONT_FAMILY, 22, "bold"), bg=MISS_COLOR, fg="#ffffff",
             ).pack(side="left")
             self.banner_anim_rows.append((img_label, ex_id))
         tk.Label(
-            self.banner, text="Get up and knock them out.", font=("Candara", 11),
+            self.banner, text="Get up and knock them out.", font=(FONT_FAMILY, 11),
             bg=MISS_COLOR, fg="#ffe4e4",
         ).pack(pady=(10, 18))
 
@@ -1118,7 +1218,7 @@ class MoveMinderApp:
         text = f"+{amount} XP" if is_gain else f"{amount} XP"
         color = "#ffe066" if is_gain else "#ffffff"
         label = tk.Label(
-            self.banner, text=text, font=("Candara", 16, "bold"),
+            self.banner, text=text, font=(FONT_FAMILY, 16, "bold"),
             bg=MISS_COLOR, fg=color,
         )
         start_y = max(60, (self.banner_height or 260) - 70)

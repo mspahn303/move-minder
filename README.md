@@ -31,6 +31,8 @@ no install, no Python required. Just download and double-click.
     animation) once the next interval starts.
   - Each exercise in the banner has a small looping animation next to it, so
     you can see the motion instead of just reading the name.
+  - While a session is active, the main window shows a short **"Ready?"**
+    instead of a long status line, so the window doesn't grow wider.
 - **Sleep** on the main window pauses the whole cycle (e.g. overnight) without
   logging a miss.
 - **Level & XP bar** on the main window tracks your progress. Harder exercises
@@ -54,19 +56,32 @@ no install, no Python required. Just download and double-click.
 - Hit/miss stats are saved to `stats.json` next to the app and persist across
   restarts and reboots.
 
+> As of v2.6.0, fresh installs default to auto-detect on, the manual meeting
+> checkbox off, and 12-hour time. These are defaults only — if you already
+> have a `stats.json` from an earlier version, your existing settings are
+> left as-is; flip the toggles in Settings if you want the new defaults.
+
 ## Settings (⚙)
 
+- **Appearance** — three themes, switch anytime with no restart needed:
+  - **Light** — the original look.
+  - **Dark** — a dark palette for low-light use.
+  - **Nostalgia** — a Windows XP-era homage (Luna blue/beige palette, chunky
+    beveled buttons, Tahoma font). Note: Tkinter can't restyle the OS-drawn
+    window title bar, so that part stays whatever your actual Windows theme
+    renders — the homage applies to the app's own content area.
 - **Always on top** — toggle whether the window stays above other windows.
 - **24-hour time** — toggle between 24-hour and 12-hour (AM/PM) clock display
-  on the main window.
-- **Auto-detect Teams calls (beta)** — when enabled, the app checks whether
-  Teams currently has your microphone open and automatically suppresses
-  reminders during meetings. It's a heuristic (no Teams login or API
-  involved), not a guarantee, and it keeps working even if you hide the
+  on the main window. Defaults to 12-hour.
+- **Auto-detect Teams calls (beta)** — on by default. When enabled, the app
+  checks whether Teams currently has your microphone open and automatically
+  suppresses reminders during meetings. It's a heuristic (no Teams login or
+  API involved), not a guarantee, and it keeps working even if you hide the
   meeting checkbox below.
-- **Show "I'm in a meeting" checkbox on main window** — turn off if you rely
-  on auto-detect and don't want the manual checkbox cluttering the main
-  window. Auto-detect keeps running regardless of this setting.
+- **Show "I'm in a meeting" checkbox on main window** — off by default now
+  that auto-detect is on by default. Turn on if you want the manual checkbox
+  visible too (e.g. for non-Teams calls). Auto-detect keeps running
+  regardless of this setting.
 - **Exercises** — enable/disable individual exercises from the rotation (at
   least one must stay enabled).
 - **Last 7 days** — a day-by-day hit/miss dashboard, plus all-time totals.
